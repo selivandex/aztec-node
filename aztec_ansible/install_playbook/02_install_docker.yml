@@ -1,0 +1,76 @@
+# @format
+---
+- name: Install Docker on Servers
+  hosts: all
+  gather_facts: yes
+  become: yes
+  become_method: sudo
+  become_user: root
+  vars_files:
+    - ../common/vars/server_vars.yml
+
+  pre_tasks:
+    - name: Check Docker command availability
+      shell: docker --version
+      register: docker_check
+      failed_when: false
+      changed_when: false
+
+    - name: Set Docker status
+      set_fact:
+        docker_already_present: "{{ docker_check.rc == 0 }}"
+
+    - name: Display Docker skip message
+      debug:
+        msg: "Docker is already installed on {{ inventory_hostname }}, skipping installation"
+      when: docker_already_present
+
+  tasks:
+    - block:
+        - name: Copy Docker install script to server
+          copy:
+            src: ../common/docker_install.sh
+            dest: /root/docker_install.sh
+            mode: "0755"
+
+        - name: Install Docker using local script
+          shell: /root/docker_install.sh
+          register: docker_install_result
+
+        - name: Remove Docker install script
+          file:
+            path: /root/docker_install.sh
+            state: absent
+
+        - name: Add ubuntu user to docker group
+          user:
+            name: ubuntu
+            groups: docker
+            append: yes
+
+        - name: Test Docker installation
+          shell: docker --version
+          register: docker_version
+
+        - name: Test Docker service
+          shell: docker run --rm hello-world
+          register: docker_test
+          retries: 3
+          delay: 5
+
+      rescue:
+        - name: Fail with detailed error
+          fail:
+            msg: "Docker installation failed on {{ inventory_hostname }}."
+
+      when: not docker_already_present
+
+    - name: Display Docker version (already installed)
+      shell: docker --version
+      register: existing_docker_version
+      when: docker_already_present
+
+    - name: Show existing Docker version
+      debug:
+        var: existing_docker_version.stdout
+      when: docker_already_present

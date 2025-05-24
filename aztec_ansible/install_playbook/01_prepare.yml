@@ -1,0 +1,31 @@
+# @format
+---
+- name: Prepare Servers for Aztec Installation
+  hosts: all
+  gather_facts: yes
+  become: yes
+  become_method: sudo
+  become_user: root
+  vars_files:
+    - ../common/vars/server_vars.yml
+
+  tasks:
+    - name: Update package cache
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+      register: update_result
+
+    - name: Install basic dependencies
+      apt:
+        name:
+          - curl
+          - wget
+          - unzip
+          - htop
+          - net-tools
+        state: present
+
+    - name: Display preparation status
+      debug:
+        msg: "Server {{ inventory_hostname }} prepared successfully"

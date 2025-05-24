@@ -1,0 +1,190 @@
+# @format
+---
+- name: Initialize proof collection
+  hosts: localhost
+  gather_facts: no
+  run_once: true
+  vars:
+    results_file: "./proof_results.csv"
+    temp_results_dir: "./temp_results"
+
+  tasks:
+    - name: Remove old results
+      file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - "{{ results_file }}"
+        - "{{ temp_results_dir }}"
+
+    - name: Create temp results directory
+      file:
+        path: "{{ temp_results_dir }}"
+        state: directory
+
+    - name: Create CSV header
+      lineinfile:
+        path: "{{ results_file }}"
+        line: "ip,address,block_number,proof,status,timestamp"
+        create: yes
+
+- name: Collect Aztec Proof from Servers
+  hosts: all
+  gather_facts: yes
+  become: yes
+  become_method: sudo
+  become_user: root
+  vars_files:
+    - ../common/vars/server_vars.yml
+  vars:
+    proof_timeout: 300 # 5 minutes
+    max_retries: 2
+
+  tasks:
+    - name: Validate server connection
+      ping:
+      register: ping_result
+
+    - name: Check if Aztec service is running
+      systemd:
+        name: aztec-node.service
+      register: service_status
+      failed_when: false
+
+    - name: Download GetProof script
+      get_url:
+        url: https://raw.githubusercontent.com/blackcat-team/kuznica/refs/heads/main/Node/Aztec/GetProof.sh
+        dest: /tmp/getproof_sh
+        mode: "0755"
+        timeout: 60
+      register: download_result
+      failed_when: false
+
+    - name: Copy Python parser to server
+      copy:
+        src: parse_proof.py
+        dest: /tmp/parse_proof.py
+        mode: "0755"
+      when: download_result.failed is not defined or not download_result.failed
+
+    - name: Execute GetProof script with timeout
+      shell: |
+        timeout {{ proof_timeout }} bash /tmp/getproof_sh
+      register: proof_output
+      failed_when: false
+      retries: "{{ max_retries }}"
+      delay: 30
+      when: download_result.failed is not defined or not download_result.failed
+
+    - name: Parse GetProof output using Python script
+      shell: |
+        python3 /tmp/parse_proof.py "{{ proof_output.stdout | default('') }}"
+      register: parsed_result
+      failed_when: false
+      when: proof_output is defined and (download_result.failed is not defined or not download_result.failed)
+
+    - name: Set download failure status
+      set_fact:
+        proof_output:
+          rc: 1
+          stdout: ""
+          stderr: "Failed to download GetProof.sh script"
+      when: download_result.failed is defined and download_result.failed
+
+    - name: Debug GetProof output (verbose mode only)
+      debug:
+        msg: |
+          GetProof.sh output for {{ ansible_host }}:
+          Return code: {{ proof_output.rc | default('N/A') }}
+          Stdout length: {{ proof_output.stdout | default('') | length }} characters
+          Stderr: {{ proof_output.stderr | default('N/A') }}
+          Python parser result: {{ parsed_result.stdout | default('N/A') }}
+      when: proof_output is defined and (ansible_verbosity > 0 or lookup('env', 'VERBOSE') == '1')
+
+    - name: Set parsed values from Python script result
+      set_fact:
+        parsed_json: "{{ parsed_result.stdout | from_json }}"
+        block_number: "{{ (parsed_result.stdout | from_json).block_number }}"
+        proof_data: "{{ (parsed_result.stdout | from_json).proof }}"
+        execution_status: "{{ (parsed_result.stdout | from_json).status }}"
+        error_msg: "{{ (parsed_result.stdout | from_json).error }}"
+      when: parsed_result is defined and parsed_result.stdout is defined
+
+    - name: Set default values for failed execution
+      set_fact:
+        block_number: "ERROR"
+        proof_data: "ERROR"
+        execution_status: "FAILED"
+        error_msg: "{{ proof_output.stderr | default('Script execution failed') | trim if proof_output is defined else 'Failed to download GetProof.sh script' }}"
+      when: >
+        (download_result.failed is defined and download_result.failed) or
+        (proof_output is defined and proof_output.rc != 0) or
+        (parsed_result is not defined or parsed_result.stdout is not defined)
+
+    - name: Create individual result file
+      copy:
+        content: "{{ ansible_host }},{{ (eth_address_b64 | b64decode) | default('N/A') }},{{ block_number }},{{ proof_data }},{{ execution_status }},{{ ansible_date_time.iso8601 }}\n"
+        dest: "./temp_results/{{ inventory_hostname }}.csv"
+      delegate_to: localhost
+
+    - name: Display result for this server
+      debug:
+        msg: |
+          Server: {{ ansible_host }}
+          Status: {{ execution_status }}
+          Block: {{ block_number }}
+          Proof: {{ proof_data[:50] }}{{ '...' if proof_data | length > 50 else '' }}
+          Service Status: {{ service_status.status.ActiveState | default('unknown') }}
+          {% if error_msg %}Error: {{ error_msg }}{% endif %}
+
+- name: Consolidate results
+  hosts: localhost
+  gather_facts: no
+  run_once: true
+  vars:
+    results_file: "./proof_results.csv"
+    temp_results_dir: "./temp_results"
+
+  tasks:
+    - name: Find all result files
+      find:
+        paths: "{{ temp_results_dir }}"
+        patterns: "*.csv"
+      register: result_files
+
+    - name: Consolidate results into final CSV
+      shell: |
+        for file in {{ temp_results_dir }}/*.csv; do
+          if [ -f "$file" ]; then
+            cat "$file" >> {{ results_file }}
+          fi
+        done
+      when: result_files.files | length > 0
+
+    - name: Clean up temp files
+      file:
+        path: "{{ temp_results_dir }}"
+        state: absent
+
+    - name: Display summary
+      shell: |
+        if [ -f "{{ results_file }}" ]; then
+          total=$(( $(wc -l < {{ results_file }}) - 1 ))
+          success=$(grep -c ",SUCCESS," {{ results_file }} || echo 0)
+          errors=$(grep -c ",ERROR\|FAILED," {{ results_file }} || echo 0)
+          echo "=== PROOF COLLECTION SUMMARY ==="
+          echo "Total servers: $total"
+          echo "Successful: $success"
+          echo "Failed: $errors"
+          echo "Results saved to: {{ results_file }}"
+          echo ""
+          echo "First few results:"
+          head -n 6 {{ results_file }}
+        else
+          echo "No results file created"
+        fi
+      register: summary_output
+
+    - name: Show summary
+      debug:
+        msg: "{{ summary_output.stdout_lines }}"

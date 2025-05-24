@@ -1,0 +1,22 @@
+*.csv
+
+# SSH Keys
+aztec_ansible/common/ssh/*
+!aztec_ansible/common/ssh/.gitkeep
+!aztec_ansible/common/ssh/README.md
+*.pem
+*.key
+id_rsa*
+*_rsa
+
+# Ansible generated files
+aztec_ansible/common/inventory/
+aztec_ansible/common/vars/
+
+# Ansible results and logs
+aztec_ansible/*/proof_results.csv
+aztec_ansible/*/*.log
+aztec_ansible/*/*_*.txt
+aztec_ansible/*/temp_results/
+aztec_ansible/*/retry/
+*.retry

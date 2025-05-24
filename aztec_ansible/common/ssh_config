@@ -1,0 +1,10 @@
+Host *
+    StrictHostKeyChecking no
+    UserKnownHostsFile /dev/null
+    PasswordAuthentication no
+    PubkeyAuthentication yes
+    ConnectTimeout 10
+    ServerAliveInterval 60
+    LogLevel ERROR
+    BatchMode yes
+    IdentitiesOnly yes 

@@ -1,0 +1,205 @@
+# @format
+---
+- name: Initialize sync check collection
+  hosts: localhost
+  gather_facts: no
+  run_once: true
+  vars:
+    results_file: "./sync_results.csv"
+    temp_results_dir: "./temp_sync_results"
+
+  tasks:
+    - name: Remove old sync results
+      file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - "{{ results_file }}"
+        - "{{ temp_results_dir }}"
+
+    - name: Create temp sync results directory
+      file:
+        path: "{{ temp_results_dir }}"
+        state: directory
+
+    - name: Create CSV header for sync results
+      lineinfile:
+        path: "{{ results_file }}"
+        line: "ip,hostname,local_block,remote_block,sync_status,port,timestamp,raw_output"
+        create: yes
+
+- name: Check Aztec Node Sync Status
+  hosts: all
+  gather_facts: yes
+  become: yes
+  become_method: sudo
+  become_user: root
+  vars_files:
+    - ../common/vars/server_vars.yml
+  vars:
+    sync_timeout: 60 # 1 minute timeout
+
+  tasks:
+    - name: Validate server connection
+      ping:
+      register: ping_result
+
+    - name: Copy sync check script to server
+      copy:
+        src: sync_check_single.sh
+        dest: /tmp/sync_check_single.sh
+        mode: "0755"
+
+    - name: Execute sync check script
+      shell: |
+        timeout {{ sync_timeout }} bash /tmp/sync_check_single.sh
+      register: sync_output
+      failed_when: false
+
+    - name: Parse sync check output
+      set_fact:
+        sync_status: >-
+          {% if sync_output.rc == 0 %}
+          SYNCED
+          {% elif sync_output.rc == 1 %}
+          NO_NODE
+          {% elif sync_output.rc == 2 %}
+          RPC_ERROR
+          {% elif sync_output.rc == 3 %}
+          SYNCING
+          {% elif sync_output.rc == 124 %}
+          TIMEOUT
+          {% else %}
+          ERROR
+          {% endif %}
+        local_block: "{{ sync_output.stdout | regex_search('🧱 Local block:\\s*(.+)', '\\1') | first | default('N/A') }}"
+        remote_block: "{{ sync_output.stdout | regex_search('🌐 Remote block:\\s*(.+)', '\\1') | first | default('N/A') }}"
+        detected_port: "{{ sync_output.stdout | regex_search('port (\\d+)', '\\1') | first | default('N/A') }}"
+
+    - name: Debug sync check output (verbose mode only)
+      debug:
+        msg: |
+          Sync check results for {{ ansible_host }}:
+          Return code: {{ sync_output.rc }}
+          Status: {{ sync_status }}
+          Local block: {{ local_block }}
+          Remote block: {{ remote_block }}
+          Port: {{ detected_port }}
+          Output: {{ sync_output.stdout | default('N/A') }}
+          Error: {{ sync_output.stderr | default('N/A') }}
+      when: ansible_verbosity > 0 or lookup('env', 'VERBOSE') == '1'
+
+    - name: Clean up sync check script
+      file:
+        path: /tmp/sync_check_single.sh
+        state: absent
+
+    - name: Create individual sync result file
+      copy:
+        content: "{{ ansible_host }},{{ inventory_hostname }},{{ local_block }},{{ remote_block }},{{ sync_status }},{{ detected_port }},{{ ansible_date_time.iso8601 }},\"{{ sync_output.stdout | default('') | replace('\"', '\"\"') }}\"\n"
+        dest: "./temp_sync_results/{{ inventory_hostname }}.csv"
+      delegate_to: localhost
+
+    - name: Display sync result for this server
+      debug:
+        msg: |
+          Server: {{ ansible_host }} ({{ inventory_hostname }})
+          Sync Status: {{ sync_status }}
+          Local Block: {{ local_block }}
+          Remote Block: {{ remote_block }}
+          Port: {{ detected_port }}
+
+- name: Consolidate sync results
+  hosts: localhost
+  gather_facts: no
+  run_once: true
+  vars:
+    results_file: "./sync_results.csv"
+    temp_results_dir: "./temp_sync_results"
+
+  tasks:
+    - name: Find all sync result files
+      find:
+        paths: "{{ temp_results_dir }}"
+        patterns: "*.csv"
+      register: sync_result_files
+
+    - name: Consolidate sync results into final CSV
+      shell: |
+        for file in {{ temp_results_dir }}/*.csv; do
+          if [ -f "$file" ]; then
+            cat "$file" >> {{ results_file }}
+          fi
+        done
+      when: sync_result_files.files | length > 0
+
+    - name: Clean up temp sync files
+      file:
+        path: "{{ temp_results_dir }}"
+        state: absent
+
+    - name: Analyze sync results
+      shell: |
+        if [ -f "{{ results_file }}" ]; then
+          total=$(( $(wc -l < {{ results_file }}) - 1 ))
+          synced=$(grep -c ",SYNCED," {{ results_file }} || echo 0)
+          syncing=$(grep -c ",SYNCING," {{ results_file }} || echo 0)
+          no_node=$(grep -c ",NO_NODE," {{ results_file }} || echo 0)
+          rpc_error=$(grep -c ",RPC_ERROR," {{ results_file }} || echo 0)
+          timeout=$(grep -c ",TIMEOUT," {{ results_file }} || echo 0)
+          other_errors=$(grep -c ",ERROR," {{ results_file }} || echo 0)
+          
+          echo "========================================"
+          echo "        AZTEC SYNC CHECK SUMMARY       "
+          echo "========================================"
+          echo "Total servers checked: $total"
+          echo "✅ Fully synced:      $synced"
+          echo "⏳ Still syncing:     $syncing"
+          echo "❌ No node found:     $no_node"
+          echo "🚫 RPC errors:        $rpc_error"
+          echo "⏰ Timeouts:          $timeout"
+          echo "💥 Other errors:      $other_errors"
+          echo "Success rate:         $(( synced * 100 / total ))%"
+          echo "========================================"
+          echo "Results saved to: {{ results_file }}"
+          echo ""
+          
+          if [ "$synced" -gt 0 ]; then
+            echo "✅ Successfully synced nodes:"
+            grep ",SYNCED," {{ results_file }} | cut -d',' -f1-4 | while IFS=',' read -r ip hostname local remote; do
+              echo "  $ip ($hostname) - Block: $local"
+            done
+            echo ""
+          fi
+          
+          if [ "$syncing" -gt 0 ]; then
+            echo "⏳ Nodes still syncing:"
+            grep ",SYNCING," {{ results_file }} | cut -d',' -f1-4 | while IFS=',' read -r ip hostname local remote; do
+              echo "  $ip ($hostname) - $local/$remote"
+            done
+            echo ""
+          fi
+          
+          if [ "$no_node" -gt 0 ]; then
+            echo "❌ Nodes not running:"
+            grep ",NO_NODE," {{ results_file }} | cut -d',' -f1-2 | while IFS=',' read -r ip hostname; do
+              echo "  $ip ($hostname)"
+            done
+            echo ""
+          fi
+          
+          if [ "$rpc_error" -gt 0 ]; then
+            echo "🚫 RPC error nodes:"
+            grep ",RPC_ERROR," {{ results_file }} | cut -d',' -f1-2 | while IFS=',' read -r ip hostname; do
+              echo "  $ip ($hostname)"
+            done
+            echo ""
+          fi
+        else
+          echo "No sync results file created"
+        fi
+      register: sync_summary_output
+
+    - name: Show sync summary
+      debug:
+        msg: "{{ sync_summary_output.stdout_lines }}"

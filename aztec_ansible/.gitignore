@@ -1,0 +1,27 @@
+# SSH keys and related files
+ssh/
+common/ssh/
+
+# Generated inventory and vars
+inventory/
+vars/
+
+# Log files
+*.log
+logs/
+
+# Backup files
+*.backup.*
+
+# CSV results
+*_results.csv
+proof_results.csv
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Temporary files
+temp_results/
+.retry 

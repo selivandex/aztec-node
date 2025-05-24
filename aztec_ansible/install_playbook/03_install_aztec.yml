@@ -1,0 +1,74 @@
+# @format
+---
+- name: Install Aztec Node on Servers
+  hosts: all
+  gather_facts: yes
+  become: yes
+  become_method: sudo
+  become_user: root
+  vars_files:
+    - ../common/vars/server_vars.yml
+  vars:
+    install_marker_file: "/root/.aztec_installed"
+
+  pre_tasks:
+    - name: Check if Aztec is already installed
+      stat:
+        path: "{{ install_marker_file }}"
+      register: aztec_installed
+
+  tasks:
+    - block:
+        - name: Download Install.sh script
+          get_url:
+            url: "{{ install_script_url | default('https://raw.githubusercontent.com/selivandex/aztec-node/refs/heads/master/Install.sh') }}"
+            dest: /root/Install.sh
+            mode: "0755"
+            timeout: 30
+            force: yes
+          register: download_result
+          retries: 3
+          delay: 5
+
+        - name: Set environment variables and run Install.sh
+          shell: |
+            export SERVER_IP="{{ server_ip }}"
+            export ETH_ADDRESS="$(echo '{{ eth_address_b64 }}' | base64 -d)"
+            export VALIDATOR_PRIVATE_KEY="$(echo '{{ validator_private_key_b64 }}' | base64 -d)"
+            export L1_RPC_URL="{{ l1_rpc_url }}"
+            export L1_CONSENSUS_URL="{{ l1_consensus_url }}"
+            echo "=== Environment Variables ==="
+            echo "SERVER_IP: $SERVER_IP"
+            echo "ETH_ADDRESS: $ETH_ADDRESS"
+            echo "VALIDATOR_PRIVATE_KEY: [HIDDEN]"
+            echo "L1_RPC_URL: $L1_RPC_URL"
+            echo "L1_CONSENSUS_URL: $L1_CONSENSUS_URL"
+            echo "=============================="
+            cd /root && ./Install.sh
+          args:
+            executable: /bin/bash
+          register: install_output
+          async: 1800 # 30 minutes timeout
+          poll: 10
+
+        - name: Create installation marker
+          file:
+            path: "{{ install_marker_file }}"
+            state: touch
+
+      rescue:
+        - name: Fail with detailed error
+          fail:
+            msg: "Installation failed on {{ inventory_hostname }}."
+
+      when: not aztec_installed.stat.exists or force_reinstall | default(false)
+
+    - name: Display installation status
+      debug:
+        msg: "Aztec already installed on {{ inventory_hostname }}"
+      when: aztec_installed.stat.exists and not (force_reinstall | default(false))
+
+    - name: Display installation output
+      debug:
+        var: install_output.stdout_lines
+      when: install_output is defined
