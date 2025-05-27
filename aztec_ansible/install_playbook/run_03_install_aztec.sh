@@ -113,23 +113,6 @@ pre_populate_ssh_keys() {
     success "SSH setup completed"
 }
 
-# Check Docker installation
-check_docker() {
-    log "Checking Docker installation on servers..."
-    
-    if ! ansible all -i "${COMMON_DIR}/inventory/hosts" -m shell -a "docker --version" --one-line &>/dev/null; then
-        warning "Docker may not be installed on all servers"
-        log "You may need to run run_02_install_docker.sh first"
-        read -p "Continue anyway? (y/N): " -n 1 -r
-        echo
-        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-            exit 1
-        fi
-    else
-        success "Docker is available on all servers"
-    fi
-}
-
 # Main function
 main() {
     log "=== Aztec Installation Script ==="
@@ -139,7 +122,6 @@ main() {
     check_ssh_key
     check_inventory
     pre_populate_ssh_keys
-    check_docker
     
     # Download Install.sh if needed
     if [ ! -f "${COMMON_DIR}/Install.sh" ]; then
