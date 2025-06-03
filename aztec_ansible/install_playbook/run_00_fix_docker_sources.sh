@@ -31,7 +31,15 @@ cd "$(dirname "$0")"
 SCRIPT_DIR="$(pwd)"
 COMMON_DIR="../common"
 LOGS_DIR="../logs"
-LOG_FILE="${LOGS_DIR}/fix_docker_sources_$(date +%Y%m%d_%H%M%S).log"
+
+# Parse command line arguments
+INVENTORY_NAME="hosts"
+if [ "$#" -ge 1 ]; then
+    INVENTORY_NAME="$1"
+fi
+
+INVENTORY_PATH="${COMMON_DIR}/inventory/${INVENTORY_NAME}"
+LOG_FILE="${LOGS_DIR}/fix_docker_sources_${INVENTORY_NAME}_$(date +%Y%m%d_%H%M%S).log"
 
 # Create logs directory
 mkdir -p "$LOGS_DIR"
@@ -41,6 +49,7 @@ exec > >(tee -a "$LOG_FILE")
 exec 2>&1
 
 log "Starting Docker sources fix using Ansible playbook"
+log "Using inventory: $INVENTORY_NAME"
 log "Log file: $LOG_FILE"
 
 # Check dependencies
@@ -79,25 +88,49 @@ check_ssh_key() {
 
 # Check inventory
 check_inventory() {
-    log "Checking inventory..."
+    log "Checking inventory: $INVENTORY_NAME"
     
-    if [ ! -f "${COMMON_DIR}/inventory/hosts" ]; then
-        error "Inventory file not found. Please run run_01_prepare.sh first."
+    if [ ! -f "$INVENTORY_PATH" ]; then
+        error "Inventory file not found: $INVENTORY_PATH"
+        echo ""
+        error "Available inventory files:"
+        ls -la "${COMMON_DIR}/inventory/" 2>/dev/null || echo "No inventory directory found"
+        echo ""
+        error "Please create the inventory file first or use run_01_prepare.sh"
         exit 1
     fi
     
-    local server_count=$(grep -c "ansible_host" "${COMMON_DIR}/inventory/hosts" || echo 0)
+    local server_count=$(grep -c "ansible_host" "$INVENTORY_PATH" || echo 0)
     if [ "$server_count" -eq 0 ]; then
-        error "No servers found in inventory"
+        error "No servers found in inventory: $INVENTORY_NAME"
         exit 1
     fi
     
-    log "Found $server_count servers in inventory"
+    log "Found $server_count servers in inventory: $INVENTORY_NAME"
+}
+
+# Show usage information
+show_usage() {
+    echo "Usage: $0 [inventory_name]"
+    echo ""
+    echo "Examples:"
+    echo "  $0              # Use default 'hosts' inventory"
+    echo "  $0 hosts_1      # Use 'hosts_1' inventory"
+    echo "  $0 hosts_2      # Use 'hosts_2' inventory"
+    echo ""
+    echo "Available inventory files:"
+    ls -1 "${COMMON_DIR}/inventory/" 2>/dev/null | grep -v "^\\." || echo "No inventory files found"
 }
 
 # Main function
 main() {
     log "=== Docker Sources Fix Script (Ansible version) ==="
+    
+    # Show help if requested
+    if [ "$#" -ge 1 ] && [[ "$1" =~ ^(-h|--help|help)$ ]]; then
+        show_usage
+        exit 0
+    fi
     
     # Run checks
     check_dependencies
@@ -105,7 +138,7 @@ main() {
     check_inventory
     
     # Run Ansible playbook
-    log "Starting Docker sources cleanup using Ansible..."
+    log "Starting Docker sources cleanup using Ansible on inventory: $INVENTORY_NAME"
     log "This process may take a few minutes depending on server count"
     
     # Set SSH key path
@@ -114,7 +147,7 @@ main() {
     export ANSIBLE_HOST_KEY_CHECKING=False
     export ANSIBLE_SSH_ARGS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o BatchMode=yes -o ConnectTimeout=10"
 
-    local ansible_cmd="ansible-playbook 00_fix_docker_sources.yml -i ${COMMON_DIR}/inventory/hosts"
+    local ansible_cmd="ansible-playbook 00_fix_docker_sources.yml -i $INVENTORY_PATH"
     
     # Add verbose flag if VERBOSE env var is set
     if [ "${VERBOSE:-}" = "1" ]; then
@@ -122,17 +155,18 @@ main() {
     fi
     
     log "Using SSH key: ${ANSIBLE_PRIVATE_KEY_FILE}"
+    log "Using inventory: $INVENTORY_PATH"
     log "Running: $ansible_cmd"
     
     if eval "$ansible_cmd"; then
         success "=== Docker sources fix completed successfully! ==="
-        log "Next step: run_02_install_docker.sh"
+        log "Next step: run_02_install_docker.sh $INVENTORY_NAME"
         log "Full log available at: $LOG_FILE"
         
         # Test apt update
         echo ""
         log "Testing apt update on all servers..."
-        if ansible all -i "${COMMON_DIR}/inventory/hosts" -m shell -a "apt-get update -qq" --become --one-line; then
+        if ansible all -i "$INVENTORY_PATH" -m shell -a "apt-get update -qq" --become --one-line; then
             success "Apt update works on all servers!"
         else
             warning "Some servers may still have apt issues"

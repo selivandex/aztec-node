@@ -12,6 +12,12 @@ bash <(curl -s https://raw.githubusercontent.com/selivandex/aztec-node/refs/head
 bash <(curl -s https://raw.githubusercontent.com/blackcat-team/kuznica/refs/heads/main/Node/Aztec/GetProof.sh)
 ```
 
+## Update node
+
+```bash
+aztec-up latest
+```
+
 ## Logs
 
 ```bash
@@ -61,7 +67,55 @@ TIMEOUT=120 ./sync_check.sh
 
 📖 **Подробнее**: [SYNC_CHECK_GUIDE.md](SYNC_CHECK_GUIDE.md)
 
-### Пример результата:
+## 🆙 Массовое обновление Aztec
+
+```bash
+# Обновить все серверы до последней версии
+cd aztec_ansible/install_playbook
+./run_04_update_aztec.sh
+
+# С подробными логами
+VERBOSE=1 ./run_04_update_aztec.sh
+
+# Обновление конкретной группы серверов
+./run_04_update_aztec.sh hosts_1
+./run_04_update_aztec.sh hosts_2
+
+# Параллельное обновление разных групп
+./run_04_update_aztec.sh hosts_1 &
+./run_04_update_aztec.sh hosts_2 &
+wait
+```
+
+**⚠️ Важно:** Служба будет временно остановлена во время обновления!
+
+## 📁 Работа с множественными группами серверов
+
+Все скрипты поддерживают работу с разными inventory файлами:
+
+```bash
+# Подготовка разных групп
+cd aztec_ansible/install_playbook
+./run_01_prepare.sh ../common/group1_servers.csv
+mv ../common/inventory/hosts ../common/inventory/hosts_1
+
+./run_01_prepare.sh ../common/group2_servers.csv
+mv ../common/inventory/hosts ../common/inventory/hosts_2
+
+# Установка Docker на разные группы
+./run_02_install_docker.sh hosts_1
+./run_02_install_docker.sh hosts_2
+
+# Установка Aztec на разные группы
+./run_03_install_aztec.sh hosts_1
+./run_03_install_aztec.sh hosts_2
+
+# Обновление разных групп
+./run_04_update_aztec.sh hosts_1
+./run_04_update_aztec.sh hosts_2
+```
+
+### Пример результата синхронизации:
 
 ```
 ========================================
@@ -84,6 +138,12 @@ Success rate:         80%
 # Полная диагностика с подробным выводом
 VERBOSE=1 ./sync_check.sh
 VERBOSE=1 ./get_proof.sh
+
+# Обновить все ноды, затем проверить статус
+cd aztec_ansible/install_playbook
+./run_04_update_aztec.sh
+cd ../..
+./sync_check.sh
 ```
 
 ## 🔧 Требования для массового управления

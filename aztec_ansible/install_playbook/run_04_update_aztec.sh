@@ -39,7 +39,7 @@ if [ "$#" -ge 1 ]; then
 fi
 
 INVENTORY_PATH="${COMMON_DIR}/inventory/${INVENTORY_NAME}"
-LOG_FILE="${LOGS_DIR}/aztec_${INVENTORY_NAME}_$(date +%Y%m%d_%H%M%S).log"
+LOG_FILE="${LOGS_DIR}/aztec_update_${INVENTORY_NAME}_$(date +%Y%m%d_%H%M%S).log"
 
 # Create logs directory
 mkdir -p "$LOGS_DIR"
@@ -48,7 +48,7 @@ mkdir -p "$LOGS_DIR"
 exec > >(tee -a "$LOG_FILE")
 exec 2>&1
 
-log "Starting Aztec installation process"
+log "Starting Aztec update process"
 log "Using inventory: $INVENTORY_NAME"
 log "Log file: $LOG_FILE"
 
@@ -60,10 +60,6 @@ check_dependencies() {
     
     if ! command -v ansible-playbook &> /dev/null; then
         missing_deps+=("ansible")
-    fi
-    
-    if ! command -v curl &> /dev/null; then
-        missing_deps+=("curl")
     fi
     
     if [ ${#missing_deps[@]} -ne 0 ]; then
@@ -113,18 +109,28 @@ check_inventory() {
     log "Found $server_count servers in inventory: $INVENTORY_NAME"
 }
 
-# Pre-populate SSH host keys
-pre_populate_ssh_keys() {
-    log "Setting up SSH to avoid interactive prompts..."
+# Pre-flight check - verify aztec-up exists on servers
+pre_flight_check() {
+    log "Running pre-flight check to verify aztec-up command exists on servers..."
     
-    # Create SSH directory if it doesn't exist
-    mkdir -p ~/.ssh
+    export ANSIBLE_PRIVATE_KEY_FILE="${COMMON_DIR}/ssh/id_rsa"
+    export ANSIBLE_CONFIG="${COMMON_DIR}/ansible.cfg"
+    export ANSIBLE_HOST_KEY_CHECKING=False
+    export ANSIBLE_SSH_ARGS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o BatchMode=yes -o ConnectTimeout=10"
     
-    # Create empty known_hosts to avoid warnings
-    touch ~/.ssh/known_hosts
-    chmod 600 ~/.ssh/known_hosts
-    
-    success "SSH setup completed"
+    if ! ansible all -i "$INVENTORY_PATH" -m shell -a "which aztec-up" --one-line 2>/dev/null; then
+        warning "Some servers may not have aztec-up command available"
+        warning "The update playbook will skip servers without aztec-up installed"
+        echo ""
+        read -p "Do you want to continue anyway? (y/N): " -n 1 -r
+        echo
+        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+            log "Update cancelled by user"
+            exit 0
+        fi
+    else
+        success "aztec-up command found on all servers"
+    fi
 }
 
 # Show usage information
@@ -142,7 +148,7 @@ show_usage() {
 
 # Main function
 main() {
-    log "=== Aztec Installation Script ==="
+    log "=== Aztec Update Script ==="
     
     # Show help if requested
     if [ "$#" -ge 1 ] && [[ "$1" =~ ^(-h|--help|help)$ ]]; then
@@ -150,28 +156,28 @@ main() {
         exit 0
     fi
     
+    # Show confirmation dialog
+    echo ""
+    warning "This will update Aztec to the latest version on ALL servers in inventory: $INVENTORY_NAME"
+    warning "The aztec-node service will be temporarily stopped during the update."
+    echo ""
+    read -p "Are you sure you want to continue? (y/N): " -n 1 -r
+    echo
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        log "Update cancelled by user"
+        exit 0
+    fi
+    
     # Run checks
     check_dependencies
     check_ssh_key
     check_inventory
-    pre_populate_ssh_keys
-    
-    # Download Install.sh if needed
-    if [ ! -f "${COMMON_DIR}/Install.sh" ]; then
-        warning "Install.sh not found. Downloading from repository..."
-        if ! curl -sf --retry 3 --retry-delay 5 \
-            "https://raw.githubusercontent.com/selivandex/aztec-node/refs/heads/master/Install.sh" \
-            -o "${COMMON_DIR}/Install.sh"; then
-            error "Failed to download Install.sh"
-            exit 1
-        fi
-        chmod +x "${COMMON_DIR}/Install.sh"
-        success "Install.sh downloaded successfully"
-    fi
+    pre_flight_check
     
     # Run Ansible playbook
-    log "Starting Aztec installation on servers from inventory: $INVENTORY_NAME"
-    log "This may take 30+ minutes depending on server count and network speed"
+    log "Starting Aztec update on all servers from inventory: $INVENTORY_NAME"
+    log "This process may take 20-30 minutes depending on server count and network speed"
+    warning "Do not interrupt this process as it may leave services in inconsistent state"
     
     # Set SSH key path
     export ANSIBLE_PRIVATE_KEY_FILE="${COMMON_DIR}/ssh/id_rsa"
@@ -179,16 +185,11 @@ main() {
     export ANSIBLE_HOST_KEY_CHECKING=False
     export ANSIBLE_SSH_ARGS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o BatchMode=yes -o ConnectTimeout=10"
 
-    local ansible_cmd="ansible-playbook 03_install_aztec.yml -i $INVENTORY_PATH --ssh-common-args='-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10'"
+    local ansible_cmd="ansible-playbook 04_update_aztec.yml -i $INVENTORY_PATH --ssh-common-args='-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10'"
     
     # Add verbose flag if VERBOSE env var is set
     if [ "${VERBOSE:-}" = "1" ]; then
         ansible_cmd="$ansible_cmd -v"
-    fi
-    
-    # Add force reinstall flag if FORCE env var is set
-    if [ "${FORCE:-}" = "1" ]; then
-        ansible_cmd="$ansible_cmd -e force_reinstall=true"
     fi
     
     log "Using SSH key: ${ANSIBLE_PRIVATE_KEY_FILE}"
@@ -196,22 +197,30 @@ main() {
     log "Running: $ansible_cmd"
     
     if eval "$ansible_cmd"; then
-        success "=== Aztec installation completed successfully! ==="
-        log "Check individual server logs at /var/log/aztec_install.log on each server"
+        success "=== Aztec update completed successfully! ==="
+        log "All servers in inventory '$INVENTORY_NAME' have been updated to the latest Aztec version"
         log "Full log available at: $LOG_FILE"
         
         # Show service status
         echo ""
         log "Checking Aztec service status on all servers..."
-        if ansible all -i "$INVENTORY_PATH" -m shell -a "systemctl is-active aztec-node.service || echo 'Service not found'" --one-line; then
-            log "Service status check completed"
+        if ansible all -i "$INVENTORY_PATH" -m shell -a "systemctl is-active aztec-node.service" --one-line; then
+            success "All services are running!"
+        else
+            warning "Some services may need manual attention"
         fi
         
         echo ""
-        success "Installation complete! You can now use get_proof playbook to collect proof data."
+        success "Update completed successfully!"
+        log "You can check individual server logs at /var/log/aztec_updates.log on each server"
     else
-        error "=== Aztec installation failed! ==="
+        error "=== Aztec update failed! ==="
+        error "Some servers may be in inconsistent state"
         error "Check the log file for details: $LOG_FILE"
+        echo ""
+        error "You may need to manually check and restart services on failed servers:"
+        error "  sudo systemctl status aztec-node.service"
+        error "  sudo systemctl restart aztec-node.service"
         exit 1
     fi
 }
@@ -219,7 +228,12 @@ main() {
 # Trap for cleanup
 cleanup() {
     if [ $? -ne 0 ]; then
-        error "Script failed. Check log file: $LOG_FILE"
+        error "Update script failed. Check log file: $LOG_FILE"
+        error ""
+        error "If some servers are in inconsistent state, you can:"
+        error "1. Check service status: sudo systemctl status aztec-node.service"
+        error "2. Restart service: sudo systemctl restart aztec-node.service"
+        error "3. Check logs: sudo journalctl -u aztec-node.service -f"
     fi
 }
 

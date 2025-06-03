@@ -1,0 +1,104 @@
+# @format
+---
+- name: Update Aztec to Latest Version
+  hosts: all
+  gather_facts: yes
+  become: yes
+  become_method: sudo
+  become_user: root
+  vars_files:
+    - ../common/vars/server_vars.yml
+  vars:
+    update_marker_file: "/root/.aztec_updated_{{ ansible_date_time.epoch }}"
+
+  pre_tasks:
+    - name: Check if aztec-up command exists
+      shell: which aztec-up
+      register: aztec_up_check
+      failed_when: false
+      changed_when: false
+
+    - name: Fail if aztec-up not found
+      fail:
+        msg: "aztec-up command not found on {{ inventory_hostname }}. Please ensure Aztec is properly installed."
+      when: aztec_up_check.rc != 0
+
+  tasks:
+    - name: Stop aztec-node service before update
+      systemd:
+        name: aztec-node.service
+        state: stopped
+      ignore_errors: yes
+      register: stop_service
+
+    - name: Wait for service to stop
+      wait_for:
+        timeout: 30
+      when: stop_service is succeeded
+
+    - name: Run aztec-up latest command
+      shell: |
+        echo "=== Starting Aztec Update Process ==="
+        echo "Server: {{ inventory_hostname }}"
+        echo "Date: $(date)"
+        echo "Current working directory: $(pwd)"
+        echo "Running aztec-up latest..."
+        aztec-up latest
+        echo "Update command completed with exit code: $?"
+      args:
+        executable: /bin/bash
+      register: aztec_update_result
+      async: 1200 # 20 minutes timeout
+      poll: 10
+      environment:
+        PATH: "/usr/local/bin:/usr/bin:/bin:/root/.local/bin"
+
+    - name: Create update marker file
+      copy:
+        content: |
+          Aztec updated to latest version
+          Date: {{ ansible_date_time.iso8601 }}
+          Server: {{ inventory_hostname }}
+          Command output available in ansible logs
+        dest: "{{ update_marker_file }}"
+        mode: "0644"
+
+    - name: Start aztec-node service after update
+      systemd:
+        name: aztec-node.service
+        state: started
+        enabled: yes
+      register: start_service
+      retries: 3
+      delay: 10
+
+    - name: Wait for service to be fully started
+      wait_for:
+        timeout: 60
+      when: start_service is succeeded
+
+    - name: Check service status after update
+      shell: systemctl status aztec-node.service --no-pager -l
+      register: service_status
+      ignore_errors: yes
+
+    - name: Display update results
+      debug:
+        msg: |
+          Update completed on {{ inventory_hostname }}
+          Service status: {{ 'Running' if start_service is succeeded else 'Failed to start' }}
+
+  post_tasks:
+    - name: Log update completion
+      lineinfile:
+        path: /var/log/aztec_updates.log
+        line: "{{ ansible_date_time.iso8601 }} - Aztec updated to latest version on {{ inventory_hostname }}"
+        create: yes
+        mode: "0644"
+
+  handlers:
+    - name: restart aztec service
+      systemd:
+        name: aztec-node.service
+        state: restarted
+        enabled: yes
