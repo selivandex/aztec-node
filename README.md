@@ -34,6 +34,7 @@ sudo systemctl restart aztec-node.service
 
 ```bash
 bash <(curl -s https://raw.githubusercontent.com/cerberus-node/aztec-network/refs/heads/main/sync-check.sh)
+bash <(curl -s https://raw.githubusercontent.com/cerberus-node/aztec-network/refs/heads/main/sync-check.sh)
 ```
 
 ---
@@ -94,25 +95,22 @@ wait
 Все скрипты поддерживают работу с разными inventory файлами:
 
 ```bash
-# Подготовка разных групп
+# Генерация inventory для разных групп
+./generate_hosts.sh group1_servers.csv
+./generate_hosts.sh group2_servers.csv
+
+# Подготовка и Docker для разных групп
 cd aztec_ansible/install_playbook
-./run_01_prepare.sh ../common/group1_servers.csv
-mv ../common/inventory/hosts ../common/inventory/hosts_1
-
-./run_01_prepare.sh ../common/group2_servers.csv
-mv ../common/inventory/hosts ../common/inventory/hosts_2
-
-# Установка Docker на разные группы
-./run_02_install_docker.sh hosts_1
-./run_02_install_docker.sh hosts_2
+./run_01_prepare.sh hosts_group1_servers
+./run_01_prepare.sh hosts_group2_servers
 
 # Установка Aztec на разные группы
-./run_03_install_aztec.sh hosts_1
-./run_03_install_aztec.sh hosts_2
+./run_03_install_aztec.sh hosts_group1_servers
+./run_03_install_aztec.sh hosts_group2_servers
 
 # Обновление разных групп
-./run_04_update_aztec.sh hosts_1
-./run_04_update_aztec.sh hosts_2
+./run_04_update_aztec.sh hosts_group1_servers
+./run_04_update_aztec.sh hosts_group2_servers
 ```
 
 ### Пример результата синхронизации:
@@ -155,11 +153,18 @@ cd ../..
 ### Если серверы не подготовлены:
 
 ```bash
+# 1. Сначала сгенерировать inventory
+./generate_hosts.sh your_servers.csv
+
+# 2. Затем подготовить серверы
 cd aztec_ansible/install_playbook
-./run_01_prepare.sh path/to/your/servers.csv
+./run_01_prepare.sh hosts_your_servers
 ```
 
----
+## 🔄 Базовый процесс
+
+1. **Генерация inventory**: `./generate_hosts.sh wallets.csv`
+2. **Подготовка серверов и установка Docker**: `./run_01_prepare.sh hosts_wallets`
 
 ## Auth to discord
 

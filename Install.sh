@@ -58,7 +58,7 @@ if ! command -v aztec &> /dev/null; then
   exit 1
 fi
 green "Обновляем AZTEC до ALPHA-TESTNET..."
-aztec-up alpha-testnet
+aztec-up latest
 
 green "Приступаем к настройке ноды..."
 

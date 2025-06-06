@@ -100,8 +100,8 @@ check_inventory() {
         error "It looks like servers have not been prepared yet."
         error "Please run the preparation stage first:"
         echo ""
-        error "  cd ../install_playbook"
-        error "  ./run_01_prepare.sh path/to/your/servers.csv"
+        error "  1. Generate inventory: cd ../../ && ./generate_hosts.sh path/to/your/servers.csv"
+        error "  2. Prepare servers: cd ../install_playbook && ./run_01_prepare.sh hosts_your_servers"
         echo ""
         error "Or if you have a CSV file with servers, you can create inventory manually:"
         error "  cd ${COMMON_DIR}"
@@ -264,9 +264,8 @@ main() {
         error "Usage: $0"
         echo ""
         error "If you need to add servers, please:"
-        error "1. Update your CSV file with server information"
-        error "2. Run: cd ../install_playbook && ./run_01_prepare.sh path/to/servers.csv"
-        error "3. Then run this script again: $0"
+        error "1. Generate inventory: cd ../../ && ./generate_hosts.sh path/to/servers.csv"
+        error "2. Run: cd ../install_playbook && ./run_01_prepare.sh hosts_your_servers"
         exit 1
     fi
     

@@ -103,7 +103,8 @@ if [[ -f "$inventory_file" ]]; then
     print_colored $GREEN "✅ Inventory file exists with $server_count servers"
 else
     print_colored $YELLOW "⚠️  Inventory file not found: $inventory_file"
-    print_colored $YELLOW "   Run: cd aztec_ansible/install_playbook && ./run_01_prepare.sh path/to/servers.csv"
+    print_colored $YELLOW "   Run: ./generate_hosts.sh path/to/servers.csv"
+    print_colored $YELLOW "   Run: cd aztec_ansible/install_playbook && ./run_01_prepare.sh hosts_servers"
 fi
 
 # Test 6: Check SSH key

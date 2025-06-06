@@ -5,11 +5,14 @@
 ## Полный workflow из корня проекта
 
 ```bash
-# 1. Установка всех компонентов
-cd aztec_ansible/install_playbook
-./run_all_stages.sh ../common/your_servers.csv
+# 1. Генерация inventory
+./generate_hosts.sh your_servers.csv
 
-# 2. Возврат в корень и сбор proof
+# 2. Установка всех компонентов
+cd aztec_ansible/install_playbook
+./run_all_stages.sh hosts_your_servers
+
+# 3. Возврат в корень и сбор proof
 cd ../..
 ./get_proof.sh
 ```
@@ -19,43 +22,42 @@ cd ../..
 ### Полная установка (рекомендуется)
 
 ```bash
-# Перейти в папку установки
-cd aztec_ansible/install_playbook
+# Генерировать inventory
+./generate_hosts.sh your_servers.csv
 
-# Запустить полную установку
-./run_all_stages.sh ../common/your_servers.csv
+# Перейти в папку установки и запустить полную установку
+cd aztec_ansible/install_playbook
+./run_all_stages.sh hosts_your_servers
 ```
 
 ### Поэтапная установка
 
 ```bash
+# Генерировать inventory
+./generate_hosts.sh your_servers.csv
+
 # Перейти в папку установки
 cd aztec_ansible/install_playbook
 
-# Этап 0: Исправление проблем с Docker (если нужно)
-./run_00_fix_docker_sources.sh
+# Этап 1: Подготовка серверов и Docker
+./run_01_prepare.sh hosts_your_servers
 
-# Этап 1: Подготовка серверов
-./run_01_prepare.sh ../common/your_servers.csv
-
-# Этап 2: Установка Docker
-./run_02_install_docker.sh
-
-# Этап 3: Установка Aztec
-./run_03_install_aztec.sh
+# Этап 2: Установка Aztec
+./run_03_install_aztec.sh hosts_your_servers
 ```
 
 ### Альтернативный запуск из корня
 
 ```bash
+# Генерация inventory
+./generate_hosts.sh your_servers.csv
+
 # Полная установка напрямую из корня
-bash aztec_ansible/install_playbook/run_all_stages.sh aztec_ansible/common/your_servers.csv
+bash aztec_ansible/install_playbook/run_all_stages.sh hosts_your_servers
 
 # Поэтапно из корня
-bash aztec_ansible/install_playbook/run_00_fix_docker_sources.sh
-bash aztec_ansible/install_playbook/run_01_prepare.sh aztec_ansible/common/your_servers.csv
-bash aztec_ansible/install_playbook/run_02_install_docker.sh
-bash aztec_ansible/install_playbook/run_03_install_aztec.sh
+bash aztec_ansible/install_playbook/run_01_prepare.sh hosts_your_servers
+bash aztec_ansible/install_playbook/run_03_install_aztec.sh hosts_your_servers
 ```
 
 ## 🔍 Сбор Proof после установки

@@ -37,51 +37,26 @@ cd aztec_ansible/install_playbook
 bash aztec_ansible/install_playbook/run_all_stages.sh aztec_ansible/common/your_servers.csv
 ```
 
-### Вариант 1: Полная установка за один раз
+### Быстрый запуск
 
 ```bash
-./run_all_stages.sh ../common/your_servers.csv
-```
+# 1. Сначала сгенерировать inventory
+cd ../../
+./generate_hosts.sh your_servers.csv
 
-### Вариант 2: Поэтапная установка
-
-```bash
-# Этап 0: Исправление проблем с Docker sources (если нужно)
-./run_00_fix_docker_sources.sh
-
-# Этап 1: Подготовка серверов
-./run_01_prepare.sh ../common/your_servers.csv
-
-# Этап 2: Установка Docker
-./run_02_install_docker.sh
-
-# Этап 3: Установка Aztec
-./run_03_install_aztec.sh
-
-# Этап 4: Обновление Aztec (опционально)
-./run_04_update_aztec.sh
-```
-
-### Вариант 3: Запуск из корня проекта поэтапно
-
-```bash
-# Из корневой папки проекта
+# 2. Полная установка
 cd aztec_ansible/install_playbook
+./run_all_stages.sh hosts_your_servers
+```
 
-# Исправление Docker sources (при ошибках с конфликтующими репозиториями)
-./run_00_fix_docker_sources.sh
+### Поэтапная установка
 
-# Подготовка серверов
-./run_01_prepare.sh ../common/your_servers.csv
+```bash
+# 1. Подготовка серверов и Docker
+./run_01_prepare.sh hosts_your_servers
 
-# Установка Docker
-./run_02_install_docker.sh
-
-# Установка Aztec
-./run_03_install_aztec.sh
-
-# Обновление Aztec до последней версии
-./run_04_update_aztec.sh
+# 2. Установка Aztec
+./run_03_install_aztec.sh hosts_your_servers
 ```
 
 ## 🔄 Обновление Aztec
@@ -163,6 +138,23 @@ mv ../common/inventory/hosts ../common/inventory/hosts_2
 ./run_02_install_docker.sh hosts_2
 ```
 
+### Множественные группы серверов
+
+```bash
+# Генерация inventory для групп
+cd ../../
+./generate_hosts.sh servers_group1.csv  # Создаст hosts_servers_group1
+./generate_hosts.sh servers_group2.csv  # Создаст hosts_servers_group2
+
+# Установка для групп
+cd aztec_ansible/install_playbook
+./run_01_prepare.sh hosts_servers_group1
+./run_03_install_aztec.sh hosts_servers_group1
+
+./run_01_prepare.sh hosts_servers_group2
+./run_03_install_aztec.sh hosts_servers_group2
+```
+
 ## 📝 Детали этапов
 
 ### Этап 0: Исправление проблем с Docker sources (опционально)
@@ -241,7 +233,7 @@ mv ../common/inventory/hosts ../common/inventory/hosts_2
 FORCE=1 ./run_02_install_docker.sh
 
 # Подробные логи Ansible
-VERBOSE=1 ./run_01_prepare.sh servers.csv
+VERBOSE=1 ./run_01_prepare.sh hosts_servers
 
 # Принудительная очистка Docker sources
 FORCE=1 ./run_00_fix_docker_sources.sh

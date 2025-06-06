@@ -144,11 +144,17 @@ chmod +x run_all_stages.sh
 
 #### Этап 1: Подготовка серверов
 
-```bash
-cd aztec_ansible/install_playbook
-chmod +x run_01_prepare.sh
-./run_01_prepare.sh path/to/your/servers.csv
-```
+2. **Подготовка серверов**:
+
+   ```bash
+   # Сначала сгенерировать inventory
+   cd ../../
+   ./generate_hosts.sh path/to/your/servers.csv
+
+   # Затем подготовить серверы
+   cd aztec_ansible/install_playbook
+   ./run_01_prepare.sh hosts_your_servers
+   ```
 
 Что делает:
 
@@ -192,7 +198,7 @@ chmod +x run_03_install_aztec.sh
 FORCE=1 ./run_02_install_docker.sh
 
 # Подробные логи
-VERBOSE=1 ./run_01_prepare.sh servers.csv
+VERBOSE=1 ./run_01_prepare.sh hosts_servers
 ```
 
 ### Сбор proof данных
