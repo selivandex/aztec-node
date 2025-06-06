@@ -109,30 +109,6 @@ check_inventory() {
     log "Found $server_count servers in inventory: $INVENTORY_NAME"
 }
 
-# Pre-flight check - verify aztec-up exists on servers
-pre_flight_check() {
-    log "Running pre-flight check to verify aztec-up command exists on servers..."
-    
-    export ANSIBLE_PRIVATE_KEY_FILE="${COMMON_DIR}/ssh/id_rsa"
-    export ANSIBLE_CONFIG="${COMMON_DIR}/ansible.cfg"
-    export ANSIBLE_HOST_KEY_CHECKING=False
-    export ANSIBLE_SSH_ARGS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o BatchMode=yes -o ConnectTimeout=10"
-    
-    if ! ansible all -i "$INVENTORY_PATH" -m shell -a "which aztec-up" --one-line 2>/dev/null; then
-        warning "Some servers may not have aztec-up command available"
-        warning "The update playbook will skip servers without aztec-up installed"
-        echo ""
-        read -p "Do you want to continue anyway? (y/N): " -n 1 -r
-        echo
-        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-            log "Update cancelled by user"
-            exit 0
-        fi
-    else
-        success "aztec-up command found on all servers"
-    fi
-}
-
 # Show usage information
 show_usage() {
     echo "Usage: $0 [inventory_name]"
@@ -172,7 +148,6 @@ main() {
     check_dependencies
     check_ssh_key
     check_inventory
-    pre_flight_check
     
     # Run Ansible playbook
     log "Starting Aztec update on all servers from inventory: $INVENTORY_NAME"
