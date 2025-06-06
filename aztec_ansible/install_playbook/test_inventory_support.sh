@@ -31,7 +31,7 @@ echo ""
 log "Testing help functionality..."
 
 # Test help for each script
-scripts=("run_00_fix_docker_sources.sh" "run_02_install_docker.sh" "run_03_install_aztec.sh" "run_04_update_aztec.sh")
+scripts=("run_00_fix_docker_sources.sh" "run_03_install_aztec.sh" "run_04_update_aztec.sh")
 
 for script in "${scripts[@]}"; do
     if [ -f "$script" ]; then

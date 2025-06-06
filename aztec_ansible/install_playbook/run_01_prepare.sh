@@ -31,7 +31,15 @@ cd "$(dirname "$0")"
 SCRIPT_DIR="$(pwd)"
 COMMON_DIR="../common"
 LOGS_DIR="../logs"
-LOG_FILE="${LOGS_DIR}/prepare_$(date +%Y%m%d_%H%M%S).log"
+
+# Parse command line arguments
+INVENTORY_NAME="hosts"
+if [ "$#" -ge 1 ]; then
+    INVENTORY_NAME="$1"
+fi
+
+INVENTORY_PATH="${COMMON_DIR}/inventory/${INVENTORY_NAME}"
+LOG_FILE="${LOGS_DIR}/prepare_and_docker_${INVENTORY_NAME}_$(date +%Y%m%d_%H%M%S).log"
 
 # Create logs directory
 mkdir -p "$LOGS_DIR"
@@ -40,7 +48,8 @@ mkdir -p "$LOGS_DIR"
 exec > >(tee -a "$LOG_FILE")
 exec 2>&1
 
-log "Starting Aztec server preparation process"
+log "Starting server preparation and Docker installation process"
+log "Using inventory: $INVENTORY_NAME"
 log "Log file: $LOG_FILE"
 
 # Check dependencies
@@ -48,10 +57,6 @@ check_dependencies() {
     log "Checking dependencies..."
     
     local missing_deps=()
-    
-    if ! command -v python3 &> /dev/null; then
-        missing_deps+=("python3")
-    fi
     
     if ! command -v ansible-playbook &> /dev/null; then
         missing_deps+=("ansible")
@@ -93,59 +98,53 @@ check_ssh_key() {
     success "SSH key permissions: $(stat -c "%a" "$ssh_key_path" 2>/dev/null || stat -f "%A" "$ssh_key_path" 2>/dev/null)"
 }
 
-# Main function
-main() {
-    log "=== Aztec Server Preparation Script ==="
+# Check inventory
+check_inventory() {
+    log "Checking inventory: $INVENTORY_NAME"
     
-    # Check arguments
-    if [ "$#" -ne 1 ]; then
-        error "Usage: $0 <path_to_csv>"
-        error "Example: $0 ../common/sample_ds1.csv"
+    if [ ! -f "$INVENTORY_PATH" ]; then
+        error "Inventory file not found: $INVENTORY_PATH"
+        echo ""
+        error "Available inventory files:"
+        ls -la "${COMMON_DIR}/inventory/" 2>/dev/null || echo "No inventory directory found"
+        echo ""
+        error "Please generate the inventory file first using generate_hosts.sh"
+        error "Example: cd ../../ && ./generate_hosts.sh wallets_alex.csv"
         exit 1
     fi
     
-    local CSV_FILE="$1"
-    
-    # Convert to absolute path
-    if [[ "$CSV_FILE" != /* ]]; then
-        CSV_FILE="$(pwd)/$CSV_FILE"
-    fi
-    
-    # Validate CSV file exists
-    if [ ! -f "$CSV_FILE" ]; then
-        error "CSV file does not exist: $CSV_FILE"
+    local server_count=$(grep -c "ansible_host" "$INVENTORY_PATH" || echo 0)
+    if [ "$server_count" -eq 0 ]; then
+        error "No servers found in inventory: $INVENTORY_NAME"
         exit 1
     fi
     
-    # Run checks
-    check_dependencies
-    check_ssh_key
-    
-    # Make scripts executable
-    log "Setting up permissions..."
-    chmod +x "${COMMON_DIR}/csv_to_inventory.py"
-    
-    # Generate inventory
-    log "Generating Ansible inventory..."
-    cd "${COMMON_DIR}"
-    if ! python3 csv_to_inventory.py "$CSV_FILE"; then
-        error "Failed to generate inventory"
-        exit 1
-    fi
-    cd "${SCRIPT_DIR}"
-    
-    # Check if inventory was created
-    if [ ! -f "${COMMON_DIR}/inventory/hosts" ]; then
-        error "Inventory file was not created"
-        exit 1
-    fi
-    
-    local server_count=$(grep -c "ansible_host" "${COMMON_DIR}/inventory/hosts" || echo 0)
-    log "Found $server_count servers in inventory"
-    
-    # Run Ansible playbook
-    log "Starting server preparation..."
-    log "This process may take several minutes depending on server count"
+    log "Found $server_count servers in inventory: $INVENTORY_NAME"
+}
+
+# Show usage information
+show_usage() {
+    echo "Usage: $0 [inventory_name]"
+    echo ""
+    echo "This script performs server preparation and Docker installation."
+    echo "Make sure to generate the inventory file first using generate_hosts.sh"
+    echo ""
+    echo "Examples:"
+    echo "  $0                    # Use default 'hosts' inventory"
+    echo "  $0 hosts_alex         # Use 'hosts_alex' inventory"
+    echo "  $0 hosts_stepa        # Use 'hosts_stepa' inventory"
+    echo ""
+    echo "Available inventory files:"
+    ls -1 "${COMMON_DIR}/inventory/" 2>/dev/null | grep -v "^\\." || echo "No inventory files found"
+    echo ""
+    echo "To generate inventory:"
+    echo "  cd ../../ && ./generate_hosts.sh wallets_alex.csv"
+}
+
+# Run server preparation
+run_preparation() {
+    log "=== Starting server preparation ==="
+    log "Preparing servers for Aztec installation..."
     
     # Set SSH key path
     export ANSIBLE_PRIVATE_KEY_FILE="${COMMON_DIR}/ssh/id_rsa"
@@ -153,25 +152,89 @@ main() {
     export ANSIBLE_HOST_KEY_CHECKING=False
     export ANSIBLE_SSH_ARGS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o BatchMode=yes -o ConnectTimeout=10"
 
-    local ansible_cmd="ansible-playbook 01_prepare.yml -i ${COMMON_DIR}/inventory/hosts --ssh-common-args='-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10'"
+    local ansible_cmd="ansible-playbook 01_prepare.yml -i $INVENTORY_PATH"
     
     # Add verbose flag if VERBOSE env var is set
     if [ "${VERBOSE:-}" = "1" ]; then
         ansible_cmd="$ansible_cmd -v"
     fi
     
-    log "Using SSH key: ${ANSIBLE_PRIVATE_KEY_FILE}"
     log "Running: $ansible_cmd"
     
     if eval "$ansible_cmd"; then
         success "=== Server preparation completed successfully! ==="
-        log "Next step: run_02_install_docker.sh"
-        log "Full log available at: $LOG_FILE"
     else
         error "=== Server preparation failed! ==="
         error "Check the log file for details: $LOG_FILE"
         exit 1
     fi
+}
+
+# Run Docker installation
+run_docker_installation() {
+    log "=== Starting Docker installation ==="
+    log "Installing Docker on all servers..."
+    log "This process may take 10-15 minutes depending on server count and network speed"
+    
+    local ansible_cmd="ansible-playbook 02_install_docker.yml -i $INVENTORY_PATH"
+    
+    # Add verbose flag if VERBOSE env var is set
+    if [ "${VERBOSE:-}" = "1" ]; then
+        ansible_cmd="$ansible_cmd -v"
+    fi
+    
+    # Add force reinstall flag if FORCE env var is set
+    if [ "${FORCE:-}" = "1" ]; then
+        ansible_cmd="$ansible_cmd -e force_reinstall=true"
+    fi
+    
+    log "Running: $ansible_cmd"
+    
+    if eval "$ansible_cmd"; then
+        success "=== Docker installation completed successfully! ==="
+        
+        # Test Docker installation
+        echo ""
+        log "Testing Docker installation on all servers..."
+        if ansible all -i "$INVENTORY_PATH" -m shell -a "docker --version" --one-line; then
+            success "Docker is working on all servers!"
+        else
+            warning "Some servers may have Docker issues"
+        fi
+    else
+        error "=== Docker installation failed! ==="
+        error "Check the log file for details: $LOG_FILE"
+        exit 1
+    fi
+}
+
+# Main function
+main() {
+    log "=== Server Preparation and Docker Installation Script ==="
+    
+    # Show help if requested
+    if [ "$#" -ge 1 ] && [[ "$1" =~ ^(-h|--help|help)$ ]]; then
+        show_usage
+        exit 0
+    fi
+    
+    # Run checks
+    check_dependencies
+    check_ssh_key
+    check_inventory
+    
+    # Run preparation
+    run_preparation
+    
+    # Run Docker installation
+    run_docker_installation
+    
+    # Final success message
+    echo ""
+    success "=== All tasks completed successfully! ==="
+    log "Servers are now prepared and have Docker installed"
+    log "Next step: run_03_install_aztec.sh $INVENTORY_NAME"
+    log "Full log available at: $LOG_FILE"
 }
 
 # Trap for cleanup

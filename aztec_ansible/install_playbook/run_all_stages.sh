@@ -48,66 +48,42 @@ main() {
     
     # Check arguments
     if [ "$#" -ne 1 ]; then
-        error "Usage: $0 <path_to_csv>"
-        error "Example: $0 ../common/servers.csv"
+        error "Usage: $0 <inventory_name>"
+        error "Example: $0 hosts_alex"
         echo ""
         echo "This script will run all installation stages:"
-        echo "  1. Server preparation"
-        echo "  2. Docker installation"
-        echo "  3. Aztec installation"
+        echo "  1. Server preparation and Docker installation"
+        echo "  2. Aztec installation"
+        echo ""
+        echo "Make sure to generate inventory first:"
+        echo "  cd ../../ && ./generate_hosts.sh wallets_alex.csv"
         echo ""
         echo "If you encounter Docker sources conflicts, run first:"
         echo "  ./run_00_fix_docker_sources.sh"
         exit 1
     fi
     
-    local CSV_FILE="$1"
+    local INVENTORY_NAME="$1"
     
-    # Convert to absolute path
-    if [[ "$CSV_FILE" != /* ]]; then
-        CSV_FILE="$(pwd)/$CSV_FILE"
-    fi
-    
-    # Validate CSV file exists
-    if [ ! -f "$CSV_FILE" ]; then
-        error "CSV file does not exist: $CSV_FILE"
-        exit 1
-    fi
-    
-    log "Starting complete installation process for: $CSV_FILE"
+    log "Starting complete installation process for inventory: $INVENTORY_NAME"
     echo ""
     
-    # Stage 1: Preparation
-    log "=== STAGE 1/3: Server Preparation ==="
-    if ! ./run_01_prepare.sh "$CSV_FILE"; then
+    # Stage 1: Preparation and Docker Installation
+    log "=== STAGE 1/2: Server Preparation and Docker Installation ==="
+    if ! ./run_01_prepare.sh "$INVENTORY_NAME"; then
         error "Stage 1 failed! Stopping installation."
         exit 1
     fi
     success "Stage 1 completed successfully!"
     echo ""
     
-    # Stage 2: Docker Installation
-    log "=== STAGE 2/3: Docker Installation ==="
-    if ! ./run_02_install_docker.sh; then
-        # Check if it's a Docker sources conflict
-        if grep -q "Conflicting values set for option Signed-By" "../logs/docker_"*".log" 2>/dev/null; then
-            warning "Docker installation failed due to sources conflict!"
-            warning "Run this command to fix: ./run_00_fix_docker_sources.sh"
-            warning "Then retry: ./run_02_install_docker.sh"
-        fi
+    # Stage 2: Aztec Installation
+    log "=== STAGE 2/2: Aztec Installation ==="
+    if ! ./run_03_install_aztec.sh "$INVENTORY_NAME"; then
         error "Stage 2 failed! Stopping installation."
         exit 1
     fi
     success "Stage 2 completed successfully!"
-    echo ""
-    
-    # Stage 3: Aztec Installation
-    log "=== STAGE 3/3: Aztec Installation ==="
-    if ! ./run_03_install_aztec.sh; then
-        error "Stage 3 failed! Stopping installation."
-        exit 1
-    fi
-    success "Stage 3 completed successfully!"
     echo ""
     
     # Final summary
@@ -121,7 +97,7 @@ main() {
     echo "✅ Aztec installation - completed"
     echo ""
     echo "Next steps:"
-    echo "1. Check service status: cd ../get_proof_playbook && ./run_get_proof.sh"
+    echo "1. Check service status: cd ../get_proof_playbook && ./run_get_proof.sh $INVENTORY_NAME"
     echo "2. Monitor logs on servers: /var/log/aztec_*.log"
     echo "3. View local logs: ls ../logs/"
     echo ""
@@ -134,9 +110,8 @@ cleanup() {
         echo ""
         echo "You can resume from failed stage by running individual scripts:"
         echo "  ./run_00_fix_docker_sources.sh     # Fix Docker sources conflicts (if needed)"
-        echo "  ./run_01_prepare.sh <csv_file>     # Server preparation"
-        echo "  ./run_02_install_docker.sh         # Docker installation"
-        echo "  ./run_03_install_aztec.sh          # Aztec installation"
+        echo "  ./run_01_prepare.sh <inventory>     # Server preparation and Docker installation"
+        echo "  ./run_03_install_aztec.sh <inventory> # Aztec installation"
         echo ""
         echo "All logs are available in: ../logs/"
     fi
