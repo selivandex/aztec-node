@@ -8,7 +8,7 @@
     zabbix_server: "{{ lookup('env', 'ZABBIX_SERVER') }}"
     zabbix_user: "{{ lookup('env', 'ZABBIX_USER') }}"
     zabbix_password: "{{ lookup('env', 'ZABBIX_PASSWORD') }}"
-    inventory_file: "{{ inventory_file_path | default('aztec_ansible/common/inventory/hosts') }}"
+    inventory_file: "{{ inventory_file_path | default('../common/inventory/hosts') }}"
     script_path: "{{ script_file_path | default('./add_aztec_hosts_to_zabbix.sh') }}"
 
   pre_tasks:

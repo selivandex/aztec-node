@@ -13,8 +13,8 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # Default values
-DEFAULT_INVENTORY="aztec_ansible/common/inventory/hosts"
-PLAYBOOK_PATH="aztec_ansible/add_zabbix_hosts_playbook/add_hosts_to_zabbix.yml"
+DEFAULT_INVENTORY="../common/inventory/hosts"
+PLAYBOOK_PATH="./add_hosts_to_zabbix.yml"
 SCRIPT_PATH="./add_aztec_hosts_to_zabbix.sh"
 
 # Function to display usage
