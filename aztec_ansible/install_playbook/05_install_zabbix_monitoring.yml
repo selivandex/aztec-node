@@ -13,6 +13,11 @@
     zabbix_version: "6.4"
 
   tasks:
+    - name: Check if running Ubuntu
+      fail:
+        msg: "This playbook only supports Ubuntu. Detected: {{ ansible_distribution }} {{ ansible_distribution_version }}"
+      when: ansible_distribution != "Ubuntu"
+
     - name: Install required packages
       package:
         name:
@@ -22,68 +27,29 @@
           - wget
         state: present
 
-    - name: Download and install Zabbix repository (Ubuntu/Debian)
+    - name: Download and install Zabbix repository (Ubuntu only)
       block:
         - name: Download Zabbix release package for Ubuntu
           get_url:
             url: "https://repo.zabbix.com/zabbix/{{ zabbix_version }}/ubuntu/pool/main/z/zabbix-release/zabbix-release_{{ zabbix_version }}-1+ubuntu{{ ansible_distribution_version }}_all.deb"
             dest: "/tmp/zabbix-release.deb"
             timeout: 30
-          when: ansible_distribution == "Ubuntu"
 
         - name: Install Zabbix release package for Ubuntu
           apt:
             deb: "/tmp/zabbix-release.deb"
             state: present
-          when: ansible_distribution == "Ubuntu"
-
-        - name: Download Zabbix release package for Debian
-          get_url:
-            url: "https://repo.zabbix.com/zabbix/{{ zabbix_version }}/debian/pool/main/z/zabbix-release/zabbix-release_{{ zabbix_version }}-1+debian{{ ansible_distribution_major_version }}_all.deb"
-            dest: "/tmp/zabbix-release.deb"
-            timeout: 30
-          when: ansible_distribution == "Debian"
-
-        - name: Install Zabbix release package for Debian
-          apt:
-            deb: "/tmp/zabbix-release.deb"
-            state: present
-          when: ansible_distribution == "Debian"
 
         - name: Update apt cache
           apt:
             update_cache: yes
-          when: ansible_os_family == "Debian"
 
         - name: Install Zabbix agent2
           apt:
             name: zabbix-agent2
             state: present
-          when: ansible_os_family == "Debian"
 
-      when: ansible_os_family == "Debian"
-
-    - name: Install Zabbix repository and agent (RHEL/CentOS)
-      block:
-        - name: Install EPEL repository
-          yum:
-            name: epel-release
-            state: present
-
-        - name: Install Zabbix repository
-          yum:
-            name: "https://repo.zabbix.com/zabbix/{{ zabbix_version }}/rhel/{{ ansible_distribution_major_version }}/x86_64/zabbix-release-{{ zabbix_version }}-1.el{{ ansible_distribution_major_version }}.noarch.rpm"
-            state: present
-
-        - name: Clean yum cache
-          shell: yum clean all
-
-        - name: Install Zabbix agent2
-          yum:
-            name: zabbix-agent2
-            state: present
-
-      when: ansible_os_family == "RedHat"
+      when: ansible_distribution == "Ubuntu"
 
     - name: Create Zabbix Agent configuration
       template:

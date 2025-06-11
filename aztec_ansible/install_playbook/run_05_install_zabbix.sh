@@ -178,27 +178,27 @@ check_inventory() {
     success "Inventory file found with $SERVER_COUNT servers"
 }
 
-# Test connectivity
-test_connectivity() {
-    log "Testing SSH connectivity to servers..."
-    
-    export ANSIBLE_HOST_KEY_CHECKING=False
-    export ANSIBLE_SSH_RETRIES=2
-    export ANSIBLE_TIMEOUT=10
-    
-    if ansible all -i "$INVENTORY_PATH" --private-key="$SSH_KEY" -m ping --one-line; then
-        success "All servers are reachable"
-    else
-        warning "Some servers may not be reachable"
-        echo ""
-        read -p "Continue anyway? (y/N): " -n 1 -r
-        echo
-        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-            error "Installation cancelled"
-            exit 1
-        fi
-    fi
-}
+# Test connectivity (disabled by default for faster execution)
+# test_connectivity() {
+#     log "Testing SSH connectivity to servers..."
+#     
+#     export ANSIBLE_HOST_KEY_CHECKING=False
+#     export ANSIBLE_SSH_RETRIES=2
+#     export ANSIBLE_TIMEOUT=10
+#     
+#     if ansible all -i "$INVENTORY_PATH" --private-key="$SSH_KEY" -m ping --one-line; then
+#         success "All servers are reachable"
+#     else
+#         warning "Some servers may not be reachable"
+#         echo ""
+#         read -p "Continue anyway? (y/N): " -n 1 -r
+#         echo
+#         if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+#             error "Installation cancelled"
+#             exit 1
+#         fi
+#     fi
+# }
 
 # Main installation function
 install_zabbix_monitoring() {
@@ -333,7 +333,6 @@ main() {
     fi
     
     # Execute installation
-    test_connectivity
     install_zabbix_monitoring
     verify_installation
     show_summary
