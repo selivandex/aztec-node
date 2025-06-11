@@ -36,20 +36,6 @@ zabbix_api_call() {
         }"
 }
 
-# Function to make Zabbix API calls without authentication (for public methods)
-zabbix_api_call_no_auth() {
-    local method="$1"
-    local params="$2"
-    
-    curl -s -X POST "${ZABBIX_SERVER}/api_jsonrpc.php" \
-        -H "Content-Type: application/json" \
-        -d "{
-            \"jsonrpc\": \"2.0\",
-            \"method\": \"${method}\",
-            \"params\": ${params},
-            \"id\": 1
-        }"
-}
 
 # Function to authenticate and get token
 authenticate() {
@@ -57,18 +43,18 @@ authenticate() {
         echo -e "${YELLOW}Using API Token authentication...${NC}"
         AUTH_TOKEN="$ZABBIX_API_TOKEN"
         
-        # Test the API token by making a simple API call
+        # Test the API token with a simple authenticated call
         echo -e "${YELLOW}Validating API Token...${NC}"
-        local test_response=$(zabbix_api_call_no_auth "apiinfo.version" "{}")
-        local api_version=$(echo "$test_response" | python3 -c "import sys, json; print(json.load(sys.stdin).get('result', ''))" 2>/dev/null)
+        local test_response=$(zabbix_api_call "hostgroup.get" "{\"output\": [\"groupid\"], \"limit\": 1}")
+        local test_result=$(echo "$test_response" | python3 -c "import sys, json; data = json.load(sys.stdin); print('ok' if 'result' in data else 'error')" 2>/dev/null)
         
-        if [ -z "$api_version" ]; then
+        if [ "$test_result" != "ok" ]; then
             echo -e "${RED}API Token validation failed! Check your token.${NC}"
             echo "Response: $test_response"
             exit 1
         fi
         
-        echo -e "${GREEN}API Token validated successfully! Zabbix API version: ${api_version}${NC}"
+        echo -e "${GREEN}API Token validated successfully!${NC}"
     else
         echo -e "${YELLOW}Using username/password authentication...${NC}"
         echo -e "${YELLOW}Note: Consider using API Token for better security${NC}"
