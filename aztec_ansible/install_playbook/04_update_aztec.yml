@@ -17,6 +17,7 @@
         echo "Date: $(date)"
         echo "Running aztec-up latest..."
         aztec-up latest
+        systemctl restart aztec-node.service
         echo "Update command completed with exit code: $?"
       args:
         executable: /bin/bash
