@@ -15,10 +15,18 @@
         echo "=== Starting Aztec Update Process ==="
         echo "Server: {{ inventory_hostname }}"
         echo "Date: $(date)"
+        echo "User: $(whoami)"
+        echo "PATH: $PATH"
+        echo "Current directory: $(pwd)"
         echo "Running aztec-up latest..."
-        aztec-up latest
+
+        # Run with output
+        aztec-up latest 2>&1 || echo "aztec-up failed with exit code: $?"
+
+        echo "Restarting service..."
         systemctl restart aztec-node.service
-        echo "Update command completed with exit code: $?"
+
+        echo "Update process completed"
       args:
         executable: /bin/bash
       register: aztec_update_result
@@ -26,6 +34,10 @@
       poll: 10
       environment:
         PATH: "/usr/local/bin:/usr/bin:/bin:/root/.local/bin:{{ ansible_env.PATH }}"
+
+    - name: Show aztec-up output
+      debug:
+        var: aztec_update_result.stdout_lines
 
     - name: Check service status after update
       shell: systemctl status aztec-node.service --no-pager -l

@@ -135,7 +135,7 @@ main() {
     # Show confirmation dialog
     echo ""
     warning "This will update Aztec to the latest version on ALL servers in inventory: $INVENTORY_NAME"
-    warning "The aztec-node service will be temporarily stopped during the update."
+    warning "aztec-up will handle the service restart automatically."
     echo ""
     read -p "Are you sure you want to continue? (y/N): " -n 1 -r
     echo
@@ -187,7 +187,7 @@ main() {
         
         echo ""
         success "Update completed successfully!"
-        log "You can check individual server logs at /var/log/aztec_updates.log on each server"
+        log "Check individual server service status with: systemctl status aztec-node.service"
     else
         error "=== Aztec update failed! ==="
         error "Some servers may be in inconsistent state"

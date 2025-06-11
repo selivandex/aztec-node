@@ -34,7 +34,6 @@ sudo systemctl restart aztec-node.service
 
 ```bash
 bash <(curl -s https://raw.githubusercontent.com/cerberus-node/aztec-network/refs/heads/main/sync-check.sh)
-bash <(curl -s https://raw.githubusercontent.com/cerberus-node/aztec-network/refs/heads/main/sync-check.sh)
 ```
 
 ---
