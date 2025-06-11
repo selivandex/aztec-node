@@ -36,6 +36,21 @@ zabbix_api_call() {
         }"
 }
 
+# Function to make Zabbix API calls without authentication (for public methods)
+zabbix_api_call_no_auth() {
+    local method="$1"
+    local params="$2"
+    
+    curl -s -X POST "${ZABBIX_SERVER}/api_jsonrpc.php" \
+        -H "Content-Type: application/json" \
+        -d "{
+            \"jsonrpc\": \"2.0\",
+            \"method\": \"${method}\",
+            \"params\": ${params},
+            \"id\": 1
+        }"
+}
+
 # Function to authenticate and get token
 authenticate() {
     if [ -n "$ZABBIX_API_TOKEN" ]; then
@@ -44,7 +59,7 @@ authenticate() {
         
         # Test the API token by making a simple API call
         echo -e "${YELLOW}Validating API Token...${NC}"
-        local test_response=$(zabbix_api_call "apiinfo.version" "{}")
+        local test_response=$(zabbix_api_call_no_auth "apiinfo.version" "{}")
         local api_version=$(echo "$test_response" | python3 -c "import sys, json; print(json.load(sys.stdin).get('result', ''))" 2>/dev/null)
         
         if [ -z "$api_version" ]; then

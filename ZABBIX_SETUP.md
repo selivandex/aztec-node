@@ -14,10 +14,21 @@
 # Загрузите файл: aztec_zabbix_template.xml
 ```
 
-### 2. Автоматическое добавление хостов
+### 2. Создание API токена в Zabbix
+
+1. Войдите в Zabbix → **Administration** → **API tokens**
+2. Создайте новый токен с правами на создание хостов
+3. Скопируйте токен (он показывается только один раз!)
+
+### 3. Автоматическое добавление хостов
 
 ```bash
-# Из корня проекта
+# Рекомендуемый способ: с API токеном
+ZABBIX_SERVER=http://your-zabbix-server/zabbix \
+ZABBIX_API_TOKEN=your-api-token-here \
+./run_06_add_host_to_zabbix.sh
+
+# Legacy способ: с логином/паролем
 ZABBIX_SERVER=http://your-zabbix-server/zabbix \
 ZABBIX_USER=Admin \
 ZABBIX_PASSWORD=your-password \
@@ -26,17 +37,15 @@ ZABBIX_PASSWORD=your-password \
 # Или из директории плейбука
 cd aztec_ansible/add_zabbix_hosts_playbook/
 ZABBIX_SERVER=http://your-zabbix-server/zabbix \
-ZABBIX_USER=Admin \
-ZABBIX_PASSWORD=your-password \
+ZABBIX_API_TOKEN=your-api-token-here \
 ./run_06_add_host_to_zabbix.sh
 ```
 
-### 3. Проверка без изменений (dry run)
+### 4. Проверка без изменений (dry run)
 
 ```bash
 ZABBIX_SERVER=http://your-zabbix-server/zabbix \
-ZABBIX_USER=Admin \
-ZABBIX_PASSWORD=your-password \
+ZABBIX_API_TOKEN=your-api-token-here \
 ./run_06_add_host_to_zabbix.sh --check
 ```
 
@@ -78,7 +87,7 @@ run_06_add_host_to_zabbix.sh      # Символическая ссылка (у�
 
 **"Template not found"** → Импортируйте `aztec_zabbix_template.xml` в Zabbix
 
-**"Authentication failed"** → Проверьте URL, логин и пароль Zabbix
+**"Authentication failed"** → Проверьте URL и API токен (или логин/пароль) Zabbix
 
 **"ansible-playbook not found"** → Установите Ansible: `pip install ansible`
 

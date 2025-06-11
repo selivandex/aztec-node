@@ -43,7 +43,21 @@ aztec_ansible/
 # Загрузите файл aztec_zabbix_template.xml
 ```
 
-### 2. Подготовка инвентаря
+### 2. Создание API токена (рекомендуется)
+
+Для безопасной аутентификации создайте API токен в Zabbix:
+
+1. Войдите в веб-интерфейс Zabbix
+2. Перейдите в **Administration** → **API tokens**
+3. Нажмите **Create API token**
+4. Заполните поля:
+   - **Name**: `Aztec Monitoring`
+   - **User**: выберите пользователя с правами на создание хостов
+   - **Expires at**: установите срок действия (опционально)
+5. Нажмите **Add**
+6. **Важно**: Скопируйте токен сразу - он больше не будет показан!
+
+### 3. Подготовка инвентаря
 
 Убедитесь, что файл `aztec_ansible/common/inventory/hosts` содержит ваши Aztec хосты в правильном формате:
 
@@ -54,7 +68,7 @@ aztec-node-2 ansible_host=10.0.1.101
 aztec-node-3 ansible_host=10.0.1.102
 ```
 
-### 3. Запуск через обертку-скрипт (рекомендуется)
+### 4. Запуск через обертку-скрипт (рекомендуется)
 
 ```bash
 # Переходим в директорию с плейбуком
@@ -87,7 +101,7 @@ ZABBIX_API_TOKEN=your-api-token-here \
 ./run_06_add_host_to_zabbix.sh --check
 ```
 
-### 4. Прямой запуск Ansible плейбука
+### 5. Прямой запуск Ansible плейбука
 
 ```bash
 # Переходим в директорию с плейбуком
@@ -110,12 +124,29 @@ ansible-playbook add_hosts_to_zabbix.yml
 
 ### Переменные окружения
 
-| Переменная         | Описание                     | Обязательная | Пример                             |
-| ------------------ | ---------------------------- | ------------ | ---------------------------------- |
-| `ZABBIX_SERVER`    | URL Zabbix сервера           | ✅ Да        | `http://zabbix.example.com/zabbix` |
-| `ZABBIX_API_TOKEN` | API токен (рекомендуется)    | ⭐ Опция 1   | `abc123def456...`                  |
-| `ZABBIX_USER`      | Имя пользователя (legacy)    | 🔄 Опция 2   | `Admin`                            |
-| `ZABBIX_PASSWORD`  | Пароль пользователя (legacy) | 🔄 Опция 2   | `secretpassword`                   |
+| Переменная         | Описание                                 | Обязательная | Пример                             |
+| ------------------ | ---------------------------------------- | ------------ | ---------------------------------- |
+| `ZABBIX_SERVER`    | URL Zabbix сервера (с портом если нужно) | ✅ Да        | `http://zabbix.example.com/zabbix` |
+| `ZABBIX_API_TOKEN` | API токен (рекомендуется)                | ⭐ Опция 1   | `abc123def456...`                  |
+| `ZABBIX_USER`      | Имя пользователя (legacy)                | 🔄 Опция 2   | `Admin`                            |
+| `ZABBIX_PASSWORD`  | Пароль пользователя (legacy)             | 🔄 Опция 2   | `secretpassword`                   |
+
+#### Примеры URL для ZABBIX_SERVER
+
+```bash
+# Стандартные порты (80/443)
+ZABBIX_SERVER=http://zabbix.example.com/zabbix
+ZABBIX_SERVER=https://zabbix.example.com/zabbix
+
+# Кастомные порты
+ZABBIX_SERVER=http://zabbix.example.com:8080/zabbix
+ZABBIX_SERVER=https://zabbix.example.com:8443/zabbix
+ZABBIX_SERVER=http://192.168.1.100:80/zabbix
+ZABBIX_SERVER=https://monitoring.company.com:8443/zabbix
+
+# Без пути (если Zabbix в корне)
+ZABBIX_SERVER=http://zabbix-server:8080
+```
 
 **Методы аутентификации:**
 
@@ -224,8 +255,7 @@ HOSTGROUP_NAME="Your Custom Group Name"
 ```bash
 cd aztec_ansible/add_zabbix_hosts_playbook/
 ZABBIX_SERVER=https://monitoring.company.com/zabbix \
-ZABBIX_USER=zabbix-admin \
-ZABBIX_PASSWORD=$(cat /secure/zabbix-password) \
+ZABBIX_API_TOKEN=$(cat /secure/zabbix-api-token) \
 ./run_06_add_host_to_zabbix.sh production-inventory.ini --verbose
 ```
 
@@ -234,8 +264,7 @@ ZABBIX_PASSWORD=$(cat /secure/zabbix-password) \
 ```bash
 cd aztec_ansible/add_zabbix_hosts_playbook/
 ZABBIX_SERVER=http://test-zabbix:8080/zabbix \
-ZABBIX_USER=testuser \
-ZABBIX_PASSWORD=testpass \
+ZABBIX_API_TOKEN=test-api-token-here \
 ./run_06_add_host_to_zabbix.sh test-hosts.ini --check
 ```
 
@@ -246,8 +275,11 @@ ZABBIX_PASSWORD=testpass \
 # В CI/CD пайплайне
 cd aztec_ansible/add_zabbix_hosts_playbook/
 export ZABBIX_SERVER="$ZABBIX_URL"
-export ZABBIX_USER="$ZABBIX_USERNAME"
-export ZABBIX_PASSWORD="$ZABBIX_SECRET"
+export ZABBIX_API_TOKEN="$ZABBIX_TOKEN"  # Рекомендуется
+
+# Альтернативно, для legacy систем:
+# export ZABBIX_USER="$ZABBIX_USERNAME"
+# export ZABBIX_PASSWORD="$ZABBIX_SECRET"
 
 ./run_06_add_host_to_zabbix.sh "$INVENTORY_FILE" --verbose || exit 1
 ```
