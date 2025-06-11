@@ -143,6 +143,42 @@ cd ../..
 ./sync_check.sh
 ```
 
+## 📊 Zabbix Мониторинг
+
+### Установка мониторинга на все серверы
+
+```bash
+# Установить Zabbix Agent 2 с Aztec мониторингом
+cd aztec_ansible/install_playbook
+./run_05_install_zabbix.sh hosts 192.168.1.100
+
+# С подробным выводом
+VERBOSE=1 ./run_05_install_zabbix.sh hosts 192.168.1.100
+```
+
+### Возможности мониторинга
+
+- ✅ **Статус сервиса** aztec-node.service
+- 🌐 **RPC мониторинг** через curl проверки
+- 🧱 **Синхронизация блоков** (local vs remote)
+- 💾 **Использование ресурсов** (память, диск)
+- 🚨 **Алерты** при сбоях и рассинхронизации
+
+### Используемые проверки
+
+```bash
+# Основная RPC проверка (как запрошено)
+curl -m 5 -X POST -H 'Content-Type: application/json' \
+  -d '{"jsonrpc":"2.0","method":"node_getL2Tips","params":[],"id":1}' \
+  "http://localhost:8080"
+
+# Дополнительные проверки
+systemctl is-active aztec-node.service
+lsof -i :8080
+```
+
+📖 **Подробнее**: [ZABBIX_MONITORING_GUIDE.md](ZABBIX_MONITORING_GUIDE.md)
+
 ## 🔧 Требования для массового управления
 
 1. **Подготовленные серверы** через install playbook
@@ -164,6 +200,22 @@ cd aztec_ansible/install_playbook
 
 1. **Генерация inventory**: `./generate_hosts.sh wallets.csv`
 2. **Подготовка серверов и установка Docker**: `./run_01_prepare.sh hosts_wallets`
+3. **Установка Aztec**: `./run_03_install_aztec.sh hosts_wallets`
+4. **Установка мониторинга**: `./run_05_install_zabbix.sh hosts_wallets 192.168.1.100`
+
+## 📁 Структура проекта
+
+### Основные файлы
+
+- `install_zabbix_agent.sh` - Скрипт установки Zabbix агента на одном сервере
+- `aztec_zabbix_template.xml` - Zabbix шаблон для импорта
+- `ZABBIX_MONITORING_GUIDE.md` - Подробное руководство по мониторингу
+
+### Ansible playbooks
+
+- `aztec_ansible/install_playbook/05_install_zabbix_monitoring.yml` - Массовая установка Zabbix
+- `aztec_ansible/install_playbook/run_05_install_zabbix.sh` - Runner скрипт
+- `aztec_ansible/install_playbook/templates/zabbix_agent2.conf.j2` - Шаблон конфигурации
 
 ## Auth to discord
 

@@ -1,0 +1,329 @@
+# @format
+---
+- name: Install Zabbix Agent for Aztec Node Monitoring
+  hosts: all
+  gather_facts: yes
+  become: yes
+  become_method: sudo
+  become_user: root
+  vars_files:
+    - ../common/vars/server_vars.yml
+  vars:
+    zabbix_server_ip: "{{ zabbix_server | default('192.168.1.100') }}" # Set your Zabbix server IP
+    zabbix_version: "6.4"
+
+  tasks:
+    - name: Install required packages
+      package:
+        name:
+          - curl
+          - jq
+          - lsof
+          - wget
+        state: present
+
+    - name: Download and install Zabbix repository (Ubuntu/Debian)
+      block:
+        - name: Download Zabbix release package for Ubuntu
+          get_url:
+            url: "https://repo.zabbix.com/zabbix/{{ zabbix_version }}/ubuntu/pool/main/z/zabbix-release/zabbix-release_{{ zabbix_version }}-1+ubuntu{{ ansible_distribution_version }}_all.deb"
+            dest: "/tmp/zabbix-release.deb"
+            timeout: 30
+          when: ansible_distribution == "Ubuntu"
+
+        - name: Install Zabbix release package for Ubuntu
+          apt:
+            deb: "/tmp/zabbix-release.deb"
+            state: present
+          when: ansible_distribution == "Ubuntu"
+
+        - name: Download Zabbix release package for Debian
+          get_url:
+            url: "https://repo.zabbix.com/zabbix/{{ zabbix_version }}/debian/pool/main/z/zabbix-release/zabbix-release_{{ zabbix_version }}-1+debian{{ ansible_distribution_major_version }}_all.deb"
+            dest: "/tmp/zabbix-release.deb"
+            timeout: 30
+          when: ansible_distribution == "Debian"
+
+        - name: Install Zabbix release package for Debian
+          apt:
+            deb: "/tmp/zabbix-release.deb"
+            state: present
+          when: ansible_distribution == "Debian"
+
+        - name: Update apt cache
+          apt:
+            update_cache: yes
+          when: ansible_os_family == "Debian"
+
+        - name: Install Zabbix agent2
+          apt:
+            name: zabbix-agent2
+            state: present
+          when: ansible_os_family == "Debian"
+
+      when: ansible_os_family == "Debian"
+
+    - name: Install Zabbix repository and agent (RHEL/CentOS)
+      block:
+        - name: Install EPEL repository
+          yum:
+            name: epel-release
+            state: present
+
+        - name: Install Zabbix repository
+          yum:
+            name: "https://repo.zabbix.com/zabbix/{{ zabbix_version }}/rhel/{{ ansible_distribution_major_version }}/x86_64/zabbix-release-{{ zabbix_version }}-1.el{{ ansible_distribution_major_version }}.noarch.rpm"
+            state: present
+
+        - name: Clean yum cache
+          shell: yum clean all
+
+        - name: Install Zabbix agent2
+          yum:
+            name: zabbix-agent2
+            state: present
+
+      when: ansible_os_family == "RedHat"
+
+    - name: Create Zabbix Agent configuration
+      template:
+        src: zabbix_agent2.conf.j2
+        dest: /etc/zabbix/zabbix_agent2.conf
+        owner: root
+        group: root
+        mode: "0644"
+        backup: yes
+      notify: restart zabbix-agent2
+
+    - name: Create Aztec monitoring script
+      copy:
+        dest: /usr/local/bin/aztec_monitor.sh
+        mode: "0755"
+        owner: root
+        group: root
+        content: |
+          #!/bin/bash
+
+          # Aztec Node monitoring script for Zabbix
+          # Usage: aztec_monitor.sh <check_type>
+
+          SERVICE_NAME="aztec-node.service"
+          LOCAL_RPC="http://localhost:8080"
+          REMOTE_RPC="https://aztec-rpc.cerberusnode.com"
+
+          case "$1" in
+              "service_status")
+                  # Return 1 if service is active, 0 otherwise
+                  systemctl is-active $SERVICE_NAME >/dev/null 2>&1 && echo "1" || echo "0"
+                  ;;
+              
+              "service_enabled")
+                  # Return 1 if service is enabled, 0 otherwise
+                  systemctl is-enabled $SERVICE_NAME >/dev/null 2>&1 && echo "1" || echo "0"
+                  ;;
+              
+              "service_failed")
+                  # Return 1 if service is in failed state, 0 otherwise
+                  [[ "$(systemctl is-failed $SERVICE_NAME 2>/dev/null)" == "failed" ]] && echo "1" || echo "0"
+                  ;;
+              
+              "service_uptime")
+                  # Return service uptime in seconds
+                  if systemctl is-active $SERVICE_NAME >/dev/null 2>&1; then
+                      START_TIME=$(systemctl show $SERVICE_NAME --property=ActiveEnterTimestamp --value)
+                      if [[ -n "$START_TIME" && "$START_TIME" != "n/a" ]]; then
+                          START_EPOCH=$(date -d "$START_TIME" +%s 2>/dev/null || echo "0")
+                          CURRENT_EPOCH=$(date +%s)
+                          echo $((CURRENT_EPOCH - START_EPOCH))
+                      else
+                          echo "0"
+                      fi
+                  else
+                      echo "0"
+                  fi
+                  ;;
+              
+              "restart_count")
+                  # Return number of service restarts
+                  systemctl show $SERVICE_NAME --property=NRestarts --value 2>/dev/null || echo "0"
+                  ;;
+              
+              "memory_usage")
+                  # Return memory usage in bytes
+                  systemctl show $SERVICE_NAME --property=MemoryCurrent --value 2>/dev/null | grep -E '^[0-9]+$' || echo "0"
+                  ;;
+              
+              "port_check")
+                  # Check if port 8080 is listening
+                  lsof -i :8080 >/dev/null 2>&1 && echo "1" || echo "0"
+                  ;;
+              
+              "rpc_check")
+                  # Basic RPC connectivity check
+                  response=$(curl -m 5 -s -X POST -H 'Content-Type: application/json' \
+                      -d '{"jsonrpc":"2.0","method":"node_getL2Tips","params":[],"id":1}' "$LOCAL_RPC" 2>/dev/null)
+                  
+                  if [[ -n "$response" && "$response" != *"error"* ]]; then
+                      echo "1"
+                  else
+                      echo "0"
+                  fi
+                  ;;
+              
+              "local_block")
+                  # Get local block number
+                  response=$(curl -m 5 -s -X POST -H 'Content-Type: application/json' \
+                      -d '{"jsonrpc":"2.0","method":"node_getL2Tips","params":[],"id":1}' "$LOCAL_RPC" 2>/dev/null)
+                  
+                  if [[ -n "$response" ]]; then
+                      block=$(echo "$response" | jq -r '.result.proven.number' 2>/dev/null)
+                      [[ "$block" != "null" && "$block" != "" ]] && echo "$block" || echo "0"
+                  else
+                      echo "0"
+                  fi
+                  ;;
+              
+              "remote_block")
+                  # Get remote block number for comparison
+                  response=$(curl -m 5 -s -X POST -H 'Content-Type: application/json' \
+                      -d '{"jsonrpc":"2.0","method":"node_getL2Tips","params":[],"id":1}' "$REMOTE_RPC" 2>/dev/null)
+                  
+                  if [[ -n "$response" ]]; then
+                      block=$(echo "$response" | jq -r '.result.proven.number' 2>/dev/null)
+                      [[ "$block" != "null" && "$block" != "" ]] && echo "$block" || echo "0"
+                  else
+                      echo "0"
+                  fi
+                  ;;
+              
+              "sync_status")
+                  # Check if node is synced (1 = synced, 0 = not synced)
+                  local_block=$(/usr/local/bin/aztec_monitor.sh local_block)
+                  remote_block=$(/usr/local/bin/aztec_monitor.sh remote_block)
+                  
+                  if [[ "$local_block" != "0" && "$remote_block" != "0" && "$local_block" == "$remote_block" ]]; then
+                      echo "1"
+                  else
+                      echo "0"
+                  fi
+                  ;;
+              
+              "block_diff")
+                  # Return difference between local and remote blocks
+                  local_block=$(/usr/local/bin/aztec_monitor.sh local_block)
+                  remote_block=$(/usr/local/bin/aztec_monitor.sh remote_block)
+                  
+                  if [[ "$local_block" != "0" && "$remote_block" != "0" ]]; then
+                      echo $((remote_block - local_block))
+                  else
+                      echo "999"  # Large number to indicate error
+                  fi
+                  ;;
+              
+              *)
+                  echo "Usage: $0 {service_status|service_enabled|service_failed|service_uptime|restart_count|memory_usage|port_check|rpc_check|local_block|remote_block|sync_status|block_diff}"
+                  exit 1
+                  ;;
+          esac
+
+    - name: Create directory for Zabbix agent configuration
+      file:
+        path: /etc/zabbix/zabbix_agent2.d
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Create Aztec monitoring UserParameters
+      copy:
+        dest: /etc/zabbix/zabbix_agent2.d/aztec_monitoring.conf
+        owner: zabbix
+        group: zabbix
+        mode: "0644"
+        content: |
+          # Aztec Node monitoring UserParameters
+
+          # Service monitoring
+          UserParameter=aztec.service.status,/usr/local/bin/aztec_monitor.sh service_status
+          UserParameter=aztec.service.enabled,/usr/local/bin/aztec_monitor.sh service_enabled
+          UserParameter=aztec.service.failed,/usr/local/bin/aztec_monitor.sh service_failed
+          UserParameter=aztec.service.uptime,/usr/local/bin/aztec_monitor.sh service_uptime
+          UserParameter=aztec.service.restarts,/usr/local/bin/aztec_monitor.sh restart_count
+          UserParameter=aztec.service.memory,/usr/local/bin/aztec_monitor.sh memory_usage
+
+          # Network and RPC monitoring
+          UserParameter=aztec.port.check,/usr/local/bin/aztec_monitor.sh port_check
+          UserParameter=aztec.rpc.check,/usr/local/bin/aztec_monitor.sh rpc_check
+
+          # Blockchain monitoring
+          UserParameter=aztec.block.local,/usr/local/bin/aztec_monitor.sh local_block
+          UserParameter=aztec.block.remote,/usr/local/bin/aztec_monitor.sh remote_block
+          UserParameter=aztec.sync.status,/usr/local/bin/aztec_monitor.sh sync_status
+          UserParameter=aztec.sync.block_diff,/usr/local/bin/aztec_monitor.sh block_diff
+
+          # Direct curl check (as requested)
+          UserParameter=aztec.rpc.raw,curl -m 5 -s -X POST -H 'Content-Type: application/json' -d '{"jsonrpc":"2.0","method":"node_getL2Tips","params":[],"id":1}' "http://localhost:8080"
+
+          # System checks
+          UserParameter=aztec.process.count,pgrep -f "aztec.*start.*node" | wc -l
+          UserParameter=aztec.disk.usage,df -h /root/.aztec | tail -1 | awk '{print $5}' | sed 's/%//'
+      notify: restart zabbix-agent2
+
+    - name: Enable and start Zabbix agent2
+      systemd:
+        name: zabbix-agent2
+        enabled: yes
+        state: started
+
+    - name: Check Zabbix agent2 status
+      systemd:
+        name: zabbix-agent2
+      register: zabbix_status
+
+    - name: Show Zabbix agent status
+      debug:
+        msg: |
+          Zabbix Agent 2 Status: {{ zabbix_status.status.ActiveState }}
+          Server: {{ inventory_hostname }}
+          IP: {{ ansible_default_ipv4.address }}
+
+    - name: Test UserParameters
+      shell: |
+        echo "Testing UserParameters on {{ inventory_hostname }}:"
+        echo "Service Status: $(su - zabbix -s /bin/bash -c '/usr/local/bin/aztec_monitor.sh service_status' 2>/dev/null || echo 'FAILED')"
+        echo "Port Check: $(su - zabbix -s /bin/bash -c '/usr/local/bin/aztec_monitor.sh port_check' 2>/dev/null || echo 'FAILED')"
+        echo "RPC Check: $(su - zabbix -s /bin/bash -c '/usr/local/bin/aztec_monitor.sh rpc_check' 2>/dev/null || echo 'FAILED')"
+      register: test_results
+      ignore_errors: yes
+
+    - name: Show test results
+      debug:
+        var: test_results.stdout_lines
+
+    - name: Create installation summary
+      debug:
+        msg: |
+          ================================================
+          Zabbix Agent Installation Summary for {{ inventory_hostname }}
+          ================================================
+
+          ✅ Zabbix Agent 2 installed and running
+          📡 Server IP: {{ ansible_default_ipv4.address }}
+          🔧 Zabbix Server: {{ zabbix_server_ip }}
+          📊 Monitoring configured for Aztec node
+
+          Next steps:
+          1. Add this host to Zabbix server: {{ ansible_default_ipv4.address }}
+          2. Import Aztec monitoring template
+          3. Link template to this host
+
+          Useful commands:
+          - Check agent: systemctl status zabbix-agent2
+          - View logs: tail -f /var/log/zabbix/zabbix_agent2.log
+          - Test: zabbix_agent2 -t aztec.service.status
+
+  handlers:
+    - name: restart zabbix-agent2
+      systemd:
+        name: zabbix-agent2
+        state: restarted
