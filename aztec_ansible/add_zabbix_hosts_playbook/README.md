@@ -60,28 +60,30 @@ aztec-node-3 ansible_host=10.0.1.102
 # Переходим в директорию с плейбуком
 cd aztec_ansible/add_zabbix_hosts_playbook/
 
-# Базовое использование
+# Рекомендуемый способ: с API токеном
+ZABBIX_SERVER=http://your-zabbix-server/zabbix \
+ZABBIX_API_TOKEN=your-api-token-here \
+./run_06_add_host_to_zabbix.sh
+
+# Legacy способ: с логином/паролем
 ZABBIX_SERVER=http://your-zabbix-server/zabbix \
 ZABBIX_USER=Admin \
 ZABBIX_PASSWORD=your-password \
 ./run_06_add_host_to_zabbix.sh
 
-# С кастомным файлом инвентаря
+# С кастомным файлом инвентаря (API токен)
 ZABBIX_SERVER=http://your-zabbix-server/zabbix \
-ZABBIX_USER=Admin \
-ZABBIX_PASSWORD=your-password \
+ZABBIX_API_TOKEN=your-api-token-here \
 ./run_06_add_host_to_zabbix.sh /path/to/custom/inventory
 
-# Verbose режим
+# Verbose режим (API токен)
 ZABBIX_SERVER=http://your-zabbix-server/zabbix \
-ZABBIX_USER=Admin \
-ZABBIX_PASSWORD=your-password \
+ZABBIX_API_TOKEN=your-api-token-here \
 ./run_06_add_host_to_zabbix.sh --verbose
 
 # Dry run (проверка без внесения изменений)
 ZABBIX_SERVER=http://your-zabbix-server/zabbix \
-ZABBIX_USER=Admin \
-ZABBIX_PASSWORD=your-password \
+ZABBIX_API_TOKEN=your-api-token-here \
 ./run_06_add_host_to_zabbix.sh --check
 ```
 
@@ -91,24 +93,34 @@ ZABBIX_PASSWORD=your-password \
 # Переходим в директорию с плейбуком
 cd aztec_ansible/add_zabbix_hosts_playbook/
 
-# Экспорт переменных окружения
+# Рекомендуемый способ: с API токеном
 export ZABBIX_SERVER=http://your-zabbix-server/zabbix
-export ZABBIX_USER=Admin
-export ZABBIX_PASSWORD=your-password
+export ZABBIX_API_TOKEN=your-api-token-here
 
 # Запуск плейбука
 ansible-playbook add_hosts_to_zabbix.yml
+
+# Альтернативно, legacy способ:
+# export ZABBIX_USER=Admin
+# export ZABBIX_PASSWORD=your-password
+# ansible-playbook add_hosts_to_zabbix.yml
 ```
 
 ## Параметры конфигурации
 
-### Переменные окружения (обязательные)
+### Переменные окружения
 
-| Переменная        | Описание                   | Пример                             |
-| ----------------- | -------------------------- | ---------------------------------- |
-| `ZABBIX_SERVER`   | URL Zabbix сервера         | `http://zabbix.example.com/zabbix` |
-| `ZABBIX_USER`     | Имя пользователя Zabbix    | `Admin`                            |
-| `ZABBIX_PASSWORD` | Пароль пользователя Zabbix | `secretpassword`                   |
+| Переменная         | Описание                     | Обязательная | Пример                             |
+| ------------------ | ---------------------------- | ------------ | ---------------------------------- |
+| `ZABBIX_SERVER`    | URL Zabbix сервера           | ✅ Да        | `http://zabbix.example.com/zabbix` |
+| `ZABBIX_API_TOKEN` | API токен (рекомендуется)    | ⭐ Опция 1   | `abc123def456...`                  |
+| `ZABBIX_USER`      | Имя пользователя (legacy)    | 🔄 Опция 2   | `Admin`                            |
+| `ZABBIX_PASSWORD`  | Пароль пользователя (legacy) | 🔄 Опция 2   | `secretpassword`                   |
+
+**Методы аутентификации:**
+
+- **Опция 1 (Рекомендуется):** Используйте `ZABBIX_API_TOKEN` для максимальной безопасности
+- **Опция 2 (Legacy):** Используйте `ZABBIX_USER` + `ZABBIX_PASSWORD` для совместимости
 
 ### Параметры плейбука
 

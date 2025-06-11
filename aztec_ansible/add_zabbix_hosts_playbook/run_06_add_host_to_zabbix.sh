@@ -25,10 +25,13 @@ ${GREEN}=== Aztec Zabbix Host Addition Script ===${NC}
 ${YELLOW}Usage:${NC}
     ZABBIX_SERVER=<url> ZABBIX_USER=<user> ZABBIX_PASSWORD=<pass> $0 [inventory_file] [options]
 
-${YELLOW}Environment Variables (Required):${NC}
-    ZABBIX_SERVER     - Zabbix server URL (e.g., http://your-zabbix-server/zabbix)
-    ZABBIX_USER       - Zabbix username (e.g., Admin)
-    ZABBIX_PASSWORD   - Zabbix password
+${YELLOW}Environment Variables:${NC}
+    ZABBIX_SERVER     - Zabbix server URL (e.g., http://your-zabbix-server/zabbix) [Required]
+    
+    Authentication (choose one):
+    ZABBIX_API_TOKEN  - API Token (recommended for security) [Option 1]
+    ZABBIX_USER       - Username for legacy auth [Option 2] 
+    ZABBIX_PASSWORD   - Password for legacy auth [Option 2]
 
 ${YELLOW}Arguments:${NC}
     inventory_file    - Path to Ansible inventory file (default: ${DEFAULT_INVENTORY})
@@ -42,28 +45,30 @@ ${YELLOW}Options:${NC}
     --skip-tags       - Skip tasks with specified tags
 
 ${YELLOW}Examples:${NC}
-    # Basic usage with environment variables
+    # Recommended: Using API Token
+    ZABBIX_SERVER=http://zabbix.example.com/zabbix \\
+    ZABBIX_API_TOKEN=your-api-token-here \\
+    $0
+
+    # Legacy: Using username/password
     ZABBIX_SERVER=http://zabbix.example.com/zabbix \\
     ZABBIX_USER=Admin \\
     ZABBIX_PASSWORD=secret123 \\
     $0
 
-    # Using custom inventory file
+    # Using custom inventory file with API token
     ZABBIX_SERVER=http://zabbix.example.com/zabbix \\
-    ZABBIX_USER=Admin \\
-    ZABBIX_PASSWORD=secret123 \\
+    ZABBIX_API_TOKEN=your-api-token-here \\
     $0 /path/to/custom/inventory
 
-    # Verbose mode with custom script path
+    # Verbose mode with API token
     ZABBIX_SERVER=http://zabbix.example.com/zabbix \\
-    ZABBIX_USER=Admin \\
-    ZABBIX_PASSWORD=secret123 \\
-    $0 --verbose --script-path ./custom_add_hosts.sh
+    ZABBIX_API_TOKEN=your-api-token-here \\
+    $0 --verbose
 
-    # Dry run (check mode)
+    # Dry run (check mode) with API token
     ZABBIX_SERVER=http://zabbix.example.com/zabbix \\
-    ZABBIX_USER=Admin \\
-    ZABBIX_PASSWORD=secret123 \\
+    ZABBIX_API_TOKEN=your-api-token-here \\
     $0 --check
 
 EOF
@@ -87,14 +92,17 @@ check_prerequisites() {
         exit 1
     fi
     
-    if [[ -z "$ZABBIX_USER" ]]; then
-        echo -e "${RED}ERROR: ZABBIX_USER environment variable is not set${NC}"
-        show_usage
-        exit 1
-    fi
-    
-    if [[ -z "$ZABBIX_PASSWORD" ]]; then
-        echo -e "${RED}ERROR: ZABBIX_PASSWORD environment variable is not set${NC}"
+    # Check authentication method
+    if [[ -n "$ZABBIX_API_TOKEN" ]]; then
+        echo -e "${GREEN}✓ API Token authentication will be used${NC}"
+    elif [[ -n "$ZABBIX_USER" && -n "$ZABBIX_PASSWORD" ]]; then
+        echo -e "${YELLOW}⚠ Username/password authentication will be used${NC}"
+        echo -e "${YELLOW}  Consider using ZABBIX_API_TOKEN for better security${NC}"
+    else
+        echo -e "${RED}ERROR: No valid authentication method configured!${NC}"
+        echo -e "${YELLOW}Please set one of the following:${NC}"
+        echo -e "  Option 1 (Recommended): ZABBIX_API_TOKEN"
+        echo -e "  Option 2 (Legacy): ZABBIX_USER + ZABBIX_PASSWORD"
         show_usage
         exit 1
     fi
@@ -176,7 +184,11 @@ main() {
     
     echo -e "${BLUE}Configuration:${NC}"
     echo -e "  Zabbix Server: ${ZABBIX_SERVER}"
-    echo -e "  Zabbix User: ${ZABBIX_USER}"
+    if [[ -n "$ZABBIX_API_TOKEN" ]]; then
+        echo -e "  Authentication: API Token (***${ZABBIX_API_TOKEN: -4})"
+    else
+        echo -e "  Authentication: Username/Password (${ZABBIX_USER})"
+    fi
     echo -e "  Inventory File: ${INVENTORY_FILE}"
     echo -e "  Script Path: ${SCRIPT_PATH}"
     echo -e "  Playbook: ${PLAYBOOK_PATH}"
@@ -189,6 +201,7 @@ main() {
     
     # Export environment variables for ansible
     export ZABBIX_SERVER
+    export ZABBIX_API_TOKEN
     export ZABBIX_USER
     export ZABBIX_PASSWORD
     

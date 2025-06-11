@@ -6,6 +6,7 @@
   gather_facts: false
   vars:
     zabbix_server: "{{ lookup('env', 'ZABBIX_SERVER') }}"
+    zabbix_api_token: "{{ lookup('env', 'ZABBIX_API_TOKEN') }}"
     zabbix_user: "{{ lookup('env', 'ZABBIX_USER') }}"
     zabbix_password: "{{ lookup('env', 'ZABBIX_PASSWORD') }}"
     inventory_file: "{{ inventory_file_path | default('../common/inventory/hosts') }}"
@@ -14,12 +15,19 @@
   pre_tasks:
     - name: Validate required environment variables
       fail:
-        msg: "Environment variable {{ item }} is not set"
-      when: vars[item] == ""
-      loop:
-        - zabbix_server
-        - zabbix_user
-        - zabbix_password
+        msg: "ZABBIX_SERVER environment variable is not set"
+      when: zabbix_server == ""
+
+    - name: Validate authentication method
+      fail:
+        msg: |
+          No valid authentication method configured!
+          Please set either:
+          - ZABBIX_API_TOKEN (recommended)
+          - ZABBIX_USER + ZABBIX_PASSWORD (legacy)
+      when:
+        - zabbix_api_token == ""
+        - (zabbix_user == "" or zabbix_password == "")
 
     - name: Check if inventory file exists
       stat:
@@ -51,13 +59,14 @@
       debug:
         msg: |
           Zabbix Server: {{ zabbix_server }}
-          Zabbix User: {{ zabbix_user }}
+          Authentication: {% if zabbix_api_token != "" %}API Token (***{{ zabbix_api_token[-4:] }}){% else %}Username/Password ({{ zabbix_user }}){% endif %}
           Inventory File: {{ inventory_file }}
           Script Path: {{ script_path }}
 
     - name: Run Zabbix host addition script
       shell: |
         export ZABBIX_SERVER="{{ zabbix_server }}"
+        export ZABBIX_API_TOKEN="{{ zabbix_api_token }}"
         export ZABBIX_USER="{{ zabbix_user }}"
         export ZABBIX_PASSWORD="{{ zabbix_password }}"
         {{ script_path }} {{ inventory_file }}
