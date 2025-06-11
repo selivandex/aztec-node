@@ -1,0 +1,265 @@
+# @format
+
+zabbix_export:
+  version: "5.4"
+  date: "2024-01-01T00:00:00Z"
+  groups:
+    - uuid: 7df96b18c230490a9a0a9e2307226338
+      name: Templates/Blockchain
+  templates:
+    - uuid: b0c3b8e8d1234567890abcdef1234567
+      template: "Template Aztec Node Monitoring"
+      name: "Template Aztec Node Monitoring"
+      description: |
+        ## Overview
+
+        Template for monitoring Aztec blockchain nodes with systemd service checks, RPC monitoring, and synchronization status.
+
+        ## Requirements
+
+        - Zabbix Agent 2 with systemd monitoring support
+        - Aztec node running on port 8080
+        - Network access to RPC endpoint
+
+        ## Items collected
+
+        - Service status via systemd
+        - Port availability check
+        - RPC endpoint response
+        - Current block number
+        - Synchronization status
+        - Connected peer count
+
+        ## Triggers
+
+        - Service down (HIGH)
+        - Port not listening (HIGH)
+        - RPC not responding (HIGH)
+        - Node syncing (WARNING)
+        - Low peer count (WARNING)
+        - No block data (AVERAGE)
+      groups:
+        - name: Templates/Blockchain
+      items:
+        - uuid: 11111111-1111-1111-1111-111111111111
+          name: "Aztec Service Status"
+          type: ZABBIX_ACTIVE
+          key: "systemd.unit.get[aztec.service]"
+          delay: 1m
+          history: 7d
+          trends: 365d
+          value_type: UNSIGNED
+          description: "Aztec node service status (1=active, 0=inactive)"
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - "$.ActiveState"
+            - type: JAVASCRIPT
+              parameters:
+                - 'return value === "active" ? 1 : 0;'
+          valuemap:
+            name: "Service state"
+          tags:
+            - tag: Application
+              value: Aztec
+
+        - uuid: 22222222-2222-2222-2222-222222222221
+          name: "Aztec Port 8080 Status"
+          type: SIMPLE
+          key: "net.tcp.service[tcp,,8080]"
+          delay: 1m
+          history: 7d
+          trends: 365d
+          value_type: UNSIGNED
+          description: "Check if port 8080 is listening (1=listening, 0=not listening)"
+          valuemap:
+            name: "Service state"
+          tags:
+            - tag: Application
+              value: Aztec
+
+        - uuid: 33333333-3333-3333-3333-333333333331
+          name: "Aztec RPC Response"
+          type: HTTP_AGENT
+          key: "aztec.rpc.check"
+          delay: 1m
+          history: 7d
+          trends: 365d
+          value_type: UNSIGNED
+          description: "Check RPC availability (1=responding, 0=not responding)"
+          url: "http://{HOST.CONN}:8080"
+          posts: '{"jsonrpc":"2.0","method":"web3_clientVersion","params":[],"id":1}'
+          post_type: 2
+          headers:
+            - name: Content-Type
+              value: application/json
+          status_codes: "200"
+          follow_redirects: 1
+          retrieve_mode: 0
+          request_method: 1
+          preprocessing:
+            - type: CHECK_NOT_SUPPORTED
+              parameters:
+                - ""
+              error_handler: CUSTOM_VALUE
+              error_handler_params: "0"
+            - type: JAVASCRIPT
+              parameters:
+                - "return 1;"
+          valuemap:
+            name: "Service state"
+          tags:
+            - tag: Application
+              value: Aztec
+
+        - uuid: 44444444-4444-4444-4444-444444444441
+          name: "Aztec Block Number"
+          type: HTTP_AGENT
+          key: "aztec.block.number"
+          delay: 30s
+          history: 7d
+          trends: 365d
+          value_type: UNSIGNED
+          description: "Current block number"
+          url: "http://{HOST.CONN}:8080"
+          posts: '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}'
+          post_type: 2
+          headers:
+            - name: Content-Type
+              value: application/json
+          status_codes: "200"
+          follow_redirects: 1
+          retrieve_mode: 0
+          request_method: 1
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - "$.result"
+            - type: JAVASCRIPT
+              parameters:
+                - "return parseInt(value, 16);"
+          tags:
+            - tag: Application
+              value: Aztec
+
+        - uuid: 55555555-5555-5555-5555-555555555551
+          name: "Aztec Sync Status"
+          type: HTTP_AGENT
+          key: "aztec.sync.status"
+          delay: 30s
+          history: 7d
+          trends: 365d
+          value_type: UNSIGNED
+          description: "Synchronization status (1=synced, 0=syncing)"
+          url: "http://{HOST.CONN}:8080"
+          posts: '{"jsonrpc":"2.0","method":"eth_syncing","params":[],"id":1}'
+          post_type: 2
+          headers:
+            - name: Content-Type
+              value: application/json
+          status_codes: "200"
+          follow_redirects: 1
+          retrieve_mode: 0
+          request_method: 1
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - "$.result"
+            - type: JAVASCRIPT
+              parameters:
+                - "return value === false ? 1 : 0;"
+          valuemap:
+            name: "Sync state"
+          tags:
+            - tag: Application
+              value: Aztec
+
+        - uuid: 66666666-6666-6666-6666-666666666661
+          name: "Aztec Peer Count"
+          type: HTTP_AGENT
+          key: "aztec.peer.count"
+          delay: 5m
+          history: 7d
+          trends: 365d
+          value_type: UNSIGNED
+          description: "Number of connected peers"
+          url: "http://{HOST.CONN}:8080"
+          posts: '{"jsonrpc":"2.0","method":"net_peerCount","params":[],"id":1}'
+          post_type: 2
+          headers:
+            - name: Content-Type
+              value: application/json
+          status_codes: "200"
+          follow_redirects: 1
+          retrieve_mode: 0
+          request_method: 1
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - "$.result"
+            - type: JAVASCRIPT
+              parameters:
+                - "return parseInt(value, 16);"
+          tags:
+            - tag: Application
+              value: Aztec
+
+  triggers:
+    - uuid: 77777777-7777-7777-7777-777777777771
+      expression: "last(/Template Aztec Node Monitoring/systemd.unit.get[aztec.service])=0"
+      recovery_mode: 0
+      name: "Aztec service is down on {HOST.NAME}"
+      priority: HIGH
+      description: "Aztec node service is not running"
+
+    - uuid: 77777777-7777-7777-7777-777777777772
+      expression: "last(/Template Aztec Node Monitoring/net.tcp.service[tcp,,8080])=0"
+      recovery_mode: 0
+      name: "Aztec port 8080 is not listening on {HOST.NAME}"
+      priority: HIGH
+      description: "Port 8080 is not accessible"
+
+    - uuid: 77777777-7777-7777-7777-777777777773
+      expression: "last(/Template Aztec Node Monitoring/aztec.rpc.check)=0"
+      recovery_mode: 0
+      name: "Aztec RPC is not responding on {HOST.NAME}"
+      priority: HIGH
+      description: "RPC endpoint is not responding"
+
+    - uuid: 77777777-7777-7777-7777-777777777774
+      expression: "last(/Template Aztec Node Monitoring/aztec.sync.status)=0"
+      recovery_mode: 0
+      name: "Aztec node is syncing on {HOST.NAME}"
+      priority: WARNING
+      description: "Node is not fully synchronized"
+
+    - uuid: 77777777-7777-7777-7777-777777777775
+      expression: "last(/Template Aztec Node Monitoring/aztec.peer.count)<3"
+      recovery_mode: 0
+      name: "Low peer count on {HOST.NAME}"
+      priority: WARNING
+      description: "Less than 3 peers connected"
+
+    - uuid: 77777777-7777-7777-7777-777777777776
+      expression: "nodata(/Template Aztec Node Monitoring/aztec.block.number,10m)=1"
+      recovery_mode: 0
+      name: "No block data from {HOST.NAME}"
+      priority: AVERAGE
+      description: "No block updates for 10 minutes"
+
+  valuemaps:
+    - uuid: 99999999-9999-9999-9999-999999999991
+      name: "Service state"
+      mappings:
+        - value: "0"
+          newvalue: Down
+        - value: "1"
+          newvalue: Up
+
+    - uuid: 99999999-9999-9999-9999-999999999992
+      name: "Sync state"
+      mappings:
+        - value: "0"
+          newvalue: Syncing
+        - value: "1"
+          newvalue: Synced

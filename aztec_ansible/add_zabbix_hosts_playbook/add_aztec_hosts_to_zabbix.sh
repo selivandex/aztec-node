@@ -199,15 +199,76 @@ read_hosts_from_inventory() {
     
     echo -e "${YELLOW}Reading hosts from inventory: ${inventory_file}${NC}"
     
-    # Parse Ansible inventory format
-    grep -E "^[0-9]" "$inventory_file" | while read line; do
-        hostname=$(echo "$line" | awk '{print $1}')
-        ip_address=$(echo "$line" | grep -o "ansible_host=[0-9.]*" | cut -d= -f2)
+    # Debug: Show total lines in file
+    local total_lines=$(wc -l < "$inventory_file")
+    echo -e "${YELLOW}Total lines in inventory file: ${total_lines}${NC}"
+    
+    # Debug: Show lines that match the pattern
+    local matching_lines=$(grep -E "^[0-9]" "$inventory_file" | wc -l)
+    echo -e "${YELLOW}Lines matching pattern ^[0-9]: ${matching_lines}${NC}"
+    
+    # Debug: Show first few matching lines
+    echo -e "${YELLOW}First 5 matching lines:${NC}"
+    grep -E "^[0-9]" "$inventory_file" | head -5
+    
+    # If no lines match the numeric pattern, try alternative parsing
+    if [ "$matching_lines" -eq 0 ]; then
+        echo -e "${YELLOW}No lines match numeric pattern, trying alternative parsing...${NC}"
+        echo -e "${YELLOW}Showing first 10 lines of file:${NC}"
+        head -10 "$inventory_file"
+        echo -e "${YELLOW}---${NC}"
         
-        if [ -n "$hostname" ] && [ -n "$ip_address" ]; then
-            add_host "$hostname" "$ip_address"
+        # Try parsing lines that contain ansible_host
+        local alt_matching=$(grep "ansible_host=" "$inventory_file" | wc -l)
+        echo -e "${YELLOW}Lines containing 'ansible_host=': ${alt_matching}${NC}"
+        
+        if [ "$alt_matching" -gt 0 ]; then
+            echo -e "${YELLOW}Using alternative parsing for ansible_host format...${NC}"
+            # Parse Ansible inventory format - alternative method
+            local hosts_added=0
+            while IFS= read -r line; do
+                if [[ -n "$line" && ! "$line" =~ ^# && ! "$line" =~ ^\[ ]]; then
+                    hostname=$(echo "$line" | awk '{print $1}')
+                    ip_address=$(echo "$line" | grep -o "ansible_host=[0-9.]*" | cut -d= -f2)
+                    
+                    echo -e "${YELLOW}Processing line: $line${NC}"
+                    echo -e "${YELLOW}  Hostname: '$hostname'${NC}"
+                    echo -e "${YELLOW}  IP Address: '$ip_address'${NC}"
+                    
+                    if [ -n "$hostname" ] && [ -n "$ip_address" ]; then
+                        add_host "$hostname" "$ip_address"
+                        ((hosts_added++))
+                    else
+                        echo -e "${RED}  Skipping - missing hostname or IP${NC}"
+                    fi
+                fi
+            done < <(grep "ansible_host=" "$inventory_file")
+            echo -e "${GREEN}Total hosts processed (alternative method): ${hosts_added}${NC}"
+            return
         fi
-    done
+    fi
+    
+    # Parse Ansible inventory format - original method
+    local hosts_added=0
+    while IFS= read -r line; do
+        if [[ -n "$line" && ! "$line" =~ ^# ]]; then
+            hostname=$(echo "$line" | awk '{print $1}')
+            ip_address=$(echo "$line" | grep -o "ansible_host=[0-9.]*" | cut -d= -f2)
+            
+            echo -e "${YELLOW}Processing line: $line${NC}"
+            echo -e "${YELLOW}  Hostname: '$hostname'${NC}"
+            echo -e "${YELLOW}  IP Address: '$ip_address'${NC}"
+            
+            if [ -n "$hostname" ] && [ -n "$ip_address" ]; then
+                add_host "$hostname" "$ip_address"
+                ((hosts_added++))
+            else
+                echo -e "${RED}  Skipping - missing hostname or IP${NC}"
+            fi
+        fi
+    done < <(grep -E "^[0-9]" "$inventory_file")
+    
+    echo -e "${GREEN}Total hosts processed: ${hosts_added}${NC}"
 }
 
 # Main execution

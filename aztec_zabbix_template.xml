@@ -1,6 +1,13 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <zabbix_export>
     <version>6.4</version>
+    <date>2024-01-01T00:00:00Z</date>
+    <template_groups>
+        <template_group>
+            <uuid>7df96b18c230490a9a0a9e2307226338</uuid>
+            <name>Templates</name>
+        </template_group>
+    </template_groups>
     <templates>
         <template>
             <uuid>b0c3b8e8d1234567890abcdef1234567</uuid>
@@ -13,19 +20,30 @@
                 </group>
             </groups>
             <items>
-                <!-- Service Status Items -->
                 <item>
                     <uuid>11111111-1111-1111-1111-111111111111</uuid>
                     <name>Aztec Service Status</name>
-                    <type>ZABBIX_PASSIVE</type>
-                    <key>aztec.service.status</key>
-                    <history>30d</history>
-                    <trends>90d</trends>
+                    <type>ZABBIX_ACTIVE</type>
+                    <key>systemd.unit.get[aztec.service]</key>
+                    <delay>1m</delay>
+                    <history>7d</history>
+                    <trends>365d</trends>
                     <value_type>UNSIGNED</value_type>
                     <description>Aztec node service status (1=active, 0=inactive)</description>
-                    <valuemap>
-                        <name>Service State</name>
-                    </valuemap>
+                    <preprocessing>
+                        <step>
+                            <type>JSONPATH</type>
+                            <parameters>
+                                <parameter>$.ActiveState</parameter>
+                            </parameters>
+                        </step>
+                        <step>
+                            <type>JAVASCRIPT</type>
+                            <parameters>
+                                <parameter>return value === 'active' ? 1 : 0;</parameter>
+                            </parameters>
+                        </step>
+                    </preprocessing>
                     <tags>
                         <tag>
                             <tag>component</tag>
@@ -34,36 +52,18 @@
                     </tags>
                 </item>
                 
-                <item>
-                    <uuid>11111111-1111-1111-1111-111111111114</uuid>
-                    <name>Aztec Service Uptime</name>
-                    <type>ZABBIX_PASSIVE</type>
-                    <key>aztec.service.uptime</key>
-                    <history>30d</history>
-                    <trends>90d</trends>
-                    <value_type>UNSIGNED</value_type>
-                    <units>s</units>
-                    <description>Aztec node service uptime in seconds</description>
-                    <tags>
-                        <tag>
-                            <tag>component</tag>
-                            <value>service</value>
-                        </tag>
-                    </tags>
-                </item>
-                
-                <!-- Network and RPC Items -->
                 <item>
                     <uuid>22222222-2222-2222-2222-222222222221</uuid>
-                    <name>Aztec Port Check</name>
-                    <type>ZABBIX_PASSIVE</type>
-                    <key>aztec.port.check</key>
-                    <history>30d</history>
-                    <trends>90d</trends>
+                    <name>Aztec Port 8080 Status</name>
+                    <type>SIMPLE</type>
+                    <key>net.tcp.service[tcp,,8080]</key>
+                    <delay>1m</delay>
+                    <history>7d</history>
+                    <trends>365d</trends>
                     <value_type>UNSIGNED</value_type>
-                    <description>Aztec RPC port 8080 listening status (1=listening, 0=not listening)</description>
+                    <description>Check if port 8080 is listening (1=listening, 0=not listening)</description>
                     <valuemap>
-                        <name>Service State</name>
+                        <name>Service state</name>
                     </valuemap>
                     <tags>
                         <tag>
@@ -74,16 +74,46 @@
                 </item>
                 
                 <item>
-                    <uuid>22222222-2222-2222-2222-222222222222</uuid>
-                    <name>Aztec RPC Check</name>
-                    <type>ZABBIX_PASSIVE</type>
+                    <uuid>33333333-3333-3333-3333-333333333331</uuid>
+                    <name>Aztec RPC Response</name>
+                    <type>HTTP_AGENT</type>
                     <key>aztec.rpc.check</key>
-                    <history>30d</history>
-                    <trends>90d</trends>
+                    <delay>1m</delay>
+                    <history>7d</history>
+                    <trends>365d</trends>
                     <value_type>UNSIGNED</value_type>
-                    <description>Aztec RPC connectivity check (1=responding, 0=not responding)</description>
+                    <description>Check RPC availability (1=responding, 0=not responding)</description>
+                    <url>http://{HOST.CONN}:8080</url>
+                    <posts>{"jsonrpc":"2.0","method":"web3_clientVersion","params":[],"id":1}</posts>
+                    <post_type>JSON</post_type>
+                    <headers>
+                        <header>
+                            <name>Content-Type</name>
+                            <value>application/json</value>
+                        </header>
+                    </headers>
+                    <status_codes>200</status_codes>
+                    <follow_redirects>YES</follow_redirects>
+                    <retrieve_mode>BODY</retrieve_mode>
+                    <request_method>POST</request_method>
+                    <preprocessing>
+                        <step>
+                            <type>CHECK_NOT_SUPPORTED</type>
+                            <parameters>
+                                <parameter/>
+                            </parameters>
+                            <error_handler>CUSTOM_VALUE</error_handler>
+                            <error_handler_params>0</error_handler_params>
+                        </step>
+                        <step>
+                            <type>JAVASCRIPT</type>
+                            <parameters>
+                                <parameter>return 1;</parameter>
+                            </parameters>
+                        </step>
+                    </preprocessing>
                     <valuemap>
-                        <name>Service State</name>
+                        <name>Service state</name>
                     </valuemap>
                     <tags>
                         <tag>
@@ -93,16 +123,43 @@
                     </tags>
                 </item>
                 
-                <!-- Blockchain Items -->
                 <item>
-                    <uuid>33333333-3333-3333-3333-333333333331</uuid>
-                    <name>Aztec Local Block Number</name>
-                    <type>ZABBIX_PASSIVE</type>
-                    <key>aztec.block.local</key>
-                    <history>30d</history>
-                    <trends>90d</trends>
+                    <uuid>44444444-4444-4444-4444-444444444441</uuid>
+                    <name>Aztec Block Number</name>
+                    <type>HTTP_AGENT</type>
+                    <key>aztec.block.number</key>
+                    <delay>30s</delay>
+                    <history>7d</history>
+                    <trends>365d</trends>
                     <value_type>UNSIGNED</value_type>
-                    <description>Current local block number</description>
+                    <description>Current block number</description>
+                    <url>http://{HOST.CONN}:8080</url>
+                    <posts>{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}</posts>
+                    <post_type>JSON</post_type>
+                    <headers>
+                        <header>
+                            <name>Content-Type</name>
+                            <value>application/json</value>
+                        </header>
+                    </headers>
+                    <status_codes>200</status_codes>
+                    <follow_redirects>YES</follow_redirects>
+                    <retrieve_mode>BODY</retrieve_mode>
+                    <request_method>POST</request_method>
+                    <preprocessing>
+                        <step>
+                            <type>JSONPATH</type>
+                            <parameters>
+                                <parameter>$.result</parameter>
+                            </parameters>
+                        </step>
+                        <step>
+                            <type>JAVASCRIPT</type>
+                            <parameters>
+                                <parameter>return parseInt(value, 16);</parameter>
+                            </parameters>
+                        </step>
+                    </preprocessing>
                     <tags>
                         <tag>
                             <tag>component</tag>
@@ -112,16 +169,44 @@
                 </item>
                 
                 <item>
-                    <uuid>33333333-3333-3333-3333-333333333333</uuid>
+                    <uuid>55555555-5555-5555-5555-555555555551</uuid>
                     <name>Aztec Sync Status</name>
-                    <type>ZABBIX_PASSIVE</type>
+                    <type>HTTP_AGENT</type>
                     <key>aztec.sync.status</key>
-                    <history>30d</history>
-                    <trends>90d</trends>
+                    <delay>30s</delay>
+                    <history>7d</history>
+                    <trends>365d</trends>
                     <value_type>UNSIGNED</value_type>
-                    <description>Aztec node synchronization status (1=synced, 0=not synced)</description>
+                    <description>Synchronization status (1=synced, 0=syncing)</description>
+                    <url>http://{HOST.CONN}:8080</url>
+                    <posts>{"jsonrpc":"2.0","method":"eth_syncing","params":[],"id":1}</posts>
+                    <post_type>JSON</post_type>
+                    <headers>
+                        <header>
+                            <name>Content-Type</name>
+                            <value>application/json</value>
+                        </header>
+                    </headers>
+                    <status_codes>200</status_codes>
+                    <follow_redirects>YES</follow_redirects>
+                    <retrieve_mode>BODY</retrieve_mode>
+                    <request_method>POST</request_method>
+                    <preprocessing>
+                        <step>
+                            <type>JSONPATH</type>
+                            <parameters>
+                                <parameter>$.result</parameter>
+                            </parameters>
+                        </step>
+                        <step>
+                            <type>JAVASCRIPT</type>
+                            <parameters>
+                                <parameter>return value === false ? 1 : 0;</parameter>
+                            </parameters>
+                        </step>
+                    </preprocessing>
                     <valuemap>
-                        <name>Sync State</name>
+                        <name>Sync state</name>
                     </valuemap>
                     <tags>
                         <tag>
@@ -130,40 +215,197 @@
                         </tag>
                     </tags>
                 </item>
+                
+                <item>
+                    <uuid>66666666-6666-6666-6666-666666666661</uuid>
+                    <name>Aztec Peer Count</name>
+                    <type>HTTP_AGENT</type>
+                    <key>aztec.peer.count</key>
+                    <delay>5m</delay>
+                    <history>7d</history>
+                    <trends>365d</trends>
+                    <value_type>UNSIGNED</value_type>
+                    <description>Number of connected peers</description>
+                    <url>http://{HOST.CONN}:8080</url>
+                    <posts>{"jsonrpc":"2.0","method":"net_peerCount","params":[],"id":1}</posts>
+                    <post_type>JSON</post_type>
+                    <headers>
+                        <header>
+                            <name>Content-Type</name>
+                            <value>application/json</value>
+                        </header>
+                    </headers>
+                    <status_codes>200</status_codes>
+                    <follow_redirects>YES</follow_redirects>
+                    <retrieve_mode>BODY</retrieve_mode>
+                    <request_method>POST</request_method>
+                    <preprocessing>
+                        <step>
+                            <type>JSONPATH</type>
+                            <parameters>
+                                <parameter>$.result</parameter>
+                            </parameters>
+                        </step>
+                        <step>
+                            <type>JAVASCRIPT</type>
+                            <parameters>
+                                <parameter>return parseInt(value, 16);</parameter>
+                            </parameters>
+                        </step>
+                    </preprocessing>
+                    <tags>
+                        <tag>
+                            <tag>component</tag>
+                            <value>network</value>
+                        </tag>
+                    </tags>
+                </item>
             </items>
             
             <triggers>
-                <!-- Critical Triggers -->
                 <trigger>
-                    <uuid>55555555-5555-5555-5555-555555555551</uuid>
-                    <expression>last(/Template Aztec Node Monitoring/aztec.service.status)=0</expression>
+                    <uuid>77777777-7777-7777-7777-777777777771</uuid>
+                    <expression>last(/Template Aztec Node Monitoring/systemd.unit.get[aztec.service])=0</expression>
+                    <recovery_mode>EXPRESSION</recovery_mode>
+                    <recovery_expression/>
                     <name>Aztec service is down on {HOST.NAME}</name>
+                    <correlation_mode>DISABLED</correlation_mode>
+                    <correlation_tag/>
+                    <url/>
+                    <status>ENABLED</status>
                     <priority>HIGH</priority>
                     <description>Aztec node service is not running</description>
+                    <type>SINGLE</type>
+                    <manual_close>NO</manual_close>
+                    <dependencies/>
+                    <tags>
+                        <tag>
+                            <tag>scope</tag>
+                            <value>availability</value>
+                        </tag>
+                    </tags>
                 </trigger>
                 
                 <trigger>
-                    <uuid>55555555-5555-5555-5555-555555555554</uuid>
-                    <expression>last(/Template Aztec Node Monitoring/aztec.rpc.check)=0</expression>
-                    <name>Aztec RPC not responding on {HOST.NAME}</name>
+                    <uuid>77777777-7777-7777-7777-777777777772</uuid>
+                    <expression>last(/Template Aztec Node Monitoring/net.tcp.service[tcp,,8080])=0</expression>
+                    <recovery_mode>EXPRESSION</recovery_mode>
+                    <recovery_expression/>
+                    <name>Aztec port 8080 is not listening on {HOST.NAME}</name>
+                    <correlation_mode>DISABLED</correlation_mode>
+                    <correlation_tag/>
+                    <url/>
+                    <status>ENABLED</status>
                     <priority>HIGH</priority>
-                    <description>Aztec RPC is not responding to requests</description>
+                    <description>Port 8080 is not accessible</description>
+                    <type>SINGLE</type>
+                    <manual_close>NO</manual_close>
+                    <dependencies/>
+                    <tags>
+                        <tag>
+                            <tag>scope</tag>
+                            <value>availability</value>
+                        </tag>
+                    </tags>
                 </trigger>
                 
-                <!-- Warning Triggers -->
                 <trigger>
-                    <uuid>66666666-6666-6666-6666-666666666661</uuid>
+                    <uuid>77777777-7777-7777-7777-777777777773</uuid>
+                    <expression>last(/Template Aztec Node Monitoring/aztec.rpc.check)=0</expression>
+                    <recovery_mode>EXPRESSION</recovery_mode>
+                    <recovery_expression/>
+                    <name>Aztec RPC is not responding on {HOST.NAME}</name>
+                    <correlation_mode>DISABLED</correlation_mode>
+                    <correlation_tag/>
+                    <url/>
+                    <status>ENABLED</status>
+                    <priority>HIGH</priority>
+                    <description>RPC endpoint is not responding</description>
+                    <type>SINGLE</type>
+                    <manual_close>NO</manual_close>
+                    <dependencies/>
+                    <tags>
+                        <tag>
+                            <tag>scope</tag>
+                            <value>availability</value>
+                        </tag>
+                    </tags>
+                </trigger>
+                
+                <trigger>
+                    <uuid>77777777-7777-7777-7777-777777777774</uuid>
                     <expression>last(/Template Aztec Node Monitoring/aztec.sync.status)=0</expression>
-                    <name>Aztec node out of sync on {HOST.NAME}</name>
+                    <recovery_mode>EXPRESSION</recovery_mode>
+                    <recovery_expression/>
+                    <name>Aztec node is syncing on {HOST.NAME}</name>
+                    <correlation_mode>DISABLED</correlation_mode>
+                    <correlation_tag/>
+                    <url/>
+                    <status>ENABLED</status>
                     <priority>WARNING</priority>
-                    <description>Aztec node is not synchronized with the network</description>
+                    <description>Node is not fully synchronized</description>
+                    <type>SINGLE</type>
+                    <manual_close>NO</manual_close>
+                    <dependencies/>
+                    <tags>
+                        <tag>
+                            <tag>scope</tag>
+                            <value>performance</value>
+                        </tag>
+                    </tags>
+                </trigger>
+                
+                <trigger>
+                    <uuid>77777777-7777-7777-7777-777777777775</uuid>
+                    <expression>last(/Template Aztec Node Monitoring/aztec.peer.count)&lt;3</expression>
+                    <recovery_mode>EXPRESSION</recovery_mode>
+                    <recovery_expression/>
+                    <name>Low peer count on {HOST.NAME}</name>
+                    <correlation_mode>DISABLED</correlation_mode>
+                    <correlation_tag/>
+                    <url/>
+                    <status>ENABLED</status>
+                    <priority>WARNING</priority>
+                    <description>Less than 3 peers connected</description>
+                    <type>SINGLE</type>
+                    <manual_close>NO</manual_close>
+                    <dependencies/>
+                    <tags>
+                        <tag>
+                            <tag>scope</tag>
+                            <value>performance</value>
+                        </tag>
+                    </tags>
+                </trigger>
+                
+                <trigger>
+                    <uuid>77777777-7777-7777-7777-777777777776</uuid>
+                    <expression>nodata(/Template Aztec Node Monitoring/aztec.block.number,10m)=1</expression>
+                    <recovery_mode>EXPRESSION</recovery_mode>
+                    <recovery_expression/>
+                    <name>No block data from {HOST.NAME}</name>
+                    <correlation_mode>DISABLED</correlation_mode>
+                    <correlation_tag/>
+                    <url/>
+                    <status>ENABLED</status>
+                    <priority>AVERAGE</priority>
+                    <description>No block updates for 10 minutes</description>
+                    <type>SINGLE</type>
+                    <manual_close>NO</manual_close>
+                    <dependencies/>
+                    <tags>
+                        <tag>
+                            <tag>scope</tag>
+                            <value>availability</value>
+                        </tag>
+                    </tags>
                 </trigger>
             </triggers>
             
             <valuemaps>
                 <valuemap>
                     <uuid>99999999-9999-9999-9999-999999999991</uuid>
-                    <name>Service State</name>
+                    <name>Service state</name>
                     <mappings>
                         <mapping>
                             <value>0</value>
@@ -178,11 +420,11 @@
                 
                 <valuemap>
                     <uuid>99999999-9999-9999-9999-999999999992</uuid>
-                    <name>Sync State</name>
+                    <name>Sync state</name>
                     <mappings>
                         <mapping>
                             <value>0</value>
-                            <newvalue>Not Synced</newvalue>
+                            <newvalue>Syncing</newvalue>
                         </mapping>
                         <mapping>
                             <value>1</value>
@@ -193,4 +435,4 @@
             </valuemaps>
         </template>
     </templates>
-</zabbix_export> 
+</zabbix_export>
