@@ -1,0 +1,1 @@
+aztec_ansible/add_zabbix_hosts_playbook/run_06_add_host_to_zabbix.sh

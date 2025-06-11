@@ -7,6 +7,8 @@ set -e
 
 # Configuration - can be overridden by environment variables
 ZABBIX_SERVER="${ZABBIX_SERVER:-http://your-zabbix-server/zabbix}"
+ZABBIX_API_TOKEN="${ZABBIX_API_TOKEN:-}"
+# Legacy support for username/password authentication
 ZABBIX_USER="${ZABBIX_USER:-Admin}"
 ZABBIX_PASSWORD="${ZABBIX_PASSWORD:-zabbix}"
 TEMPLATE_NAME="Template Aztec Node Monitoring"
@@ -36,29 +38,48 @@ zabbix_api_call() {
 
 # Function to authenticate and get token
 authenticate() {
-    echo -e "${YELLOW}Authenticating with Zabbix Server...${NC}"
-    
-    local response=$(curl -s -X POST "${ZABBIX_SERVER}/api_jsonrpc.php" \
-        -H "Content-Type: application/json" \
-        -d "{
-            \"jsonrpc\": \"2.0\",
-            \"method\": \"user.login\",
-            \"params\": {
-                \"username\": \"${ZABBIX_USER}\",
-                \"password\": \"${ZABBIX_PASSWORD}\"
-            },
-            \"id\": 1
-        }")
-    
-    AUTH_TOKEN=$(echo "$response" | python3 -c "import sys, json; print(json.load(sys.stdin)['result'])" 2>/dev/null)
-    
-    if [ -z "$AUTH_TOKEN" ]; then
-        echo -e "${RED}Authentication failed! Check your credentials.${NC}"
-        echo "Response: $response"
-        exit 1
+    if [ -n "$ZABBIX_API_TOKEN" ]; then
+        echo -e "${YELLOW}Using API Token authentication...${NC}"
+        AUTH_TOKEN="$ZABBIX_API_TOKEN"
+        
+        # Test the API token by making a simple API call
+        echo -e "${YELLOW}Validating API Token...${NC}"
+        local test_response=$(zabbix_api_call "apiinfo.version" "{}")
+        local api_version=$(echo "$test_response" | python3 -c "import sys, json; print(json.load(sys.stdin).get('result', ''))" 2>/dev/null)
+        
+        if [ -z "$api_version" ]; then
+            echo -e "${RED}API Token validation failed! Check your token.${NC}"
+            echo "Response: $test_response"
+            exit 1
+        fi
+        
+        echo -e "${GREEN}API Token validated successfully! Zabbix API version: ${api_version}${NC}"
+    else
+        echo -e "${YELLOW}Using username/password authentication...${NC}"
+        echo -e "${YELLOW}Note: Consider using API Token for better security${NC}"
+        
+        local response=$(curl -s -X POST "${ZABBIX_SERVER}/api_jsonrpc.php" \
+            -H "Content-Type: application/json" \
+            -d "{
+                \"jsonrpc\": \"2.0\",
+                \"method\": \"user.login\",
+                \"params\": {
+                    \"username\": \"${ZABBIX_USER}\",
+                    \"password\": \"${ZABBIX_PASSWORD}\"
+                },
+                \"id\": 1
+            }")
+        
+        AUTH_TOKEN=$(echo "$response" | python3 -c "import sys, json; print(json.load(sys.stdin)['result'])" 2>/dev/null)
+        
+        if [ -z "$AUTH_TOKEN" ]; then
+            echo -e "${RED}Authentication failed! Check your credentials.${NC}"
+            echo "Response: $response"
+            exit 1
+        fi
+        
+        echo -e "${GREEN}Successfully authenticated with username/password!${NC}"
     fi
-    
-    echo -e "${GREEN}Successfully authenticated!${NC}"
 }
 
 # Function to get template ID
@@ -220,12 +241,28 @@ main() {
     fi
     
     # Check if essential variables are set
-    if [[ -z "$ZABBIX_SERVER" || -z "$ZABBIX_USER" || -z "$ZABBIX_PASSWORD" ]]; then
-        echo -e "${RED}Error: Required configuration variables are not set!${NC}"
-        echo -e "${YELLOW}Required environment variables:${NC}"
+    if [[ -z "$ZABBIX_SERVER" ]]; then
+        echo -e "${RED}Error: ZABBIX_SERVER is required!${NC}"
         echo -e "  ZABBIX_SERVER (current: ${ZABBIX_SERVER:-'not set'})"
-        echo -e "  ZABBIX_USER (current: ${ZABBIX_USER:-'not set'})"
-        echo -e "  ZABBIX_PASSWORD (current: ${ZABBIX_PASSWORD:-'not set'})"
+        exit 1
+    fi
+    
+    # Check authentication method
+    if [[ -n "$ZABBIX_API_TOKEN" ]]; then
+        echo -e "${GREEN}✓ API Token authentication configured${NC}"
+    elif [[ -n "$ZABBIX_USER" && -n "$ZABBIX_PASSWORD" ]]; then
+        echo -e "${YELLOW}⚠ Username/password authentication configured${NC}"
+        echo -e "${YELLOW}  Consider using API Token for better security${NC}"
+    else
+        echo -e "${RED}Error: No valid authentication method configured!${NC}"
+        echo -e "${YELLOW}Required authentication (choose one):${NC}"
+        echo -e "  Option 1 (Recommended): ZABBIX_API_TOKEN"
+        echo -e "  Option 2 (Legacy): ZABBIX_USER + ZABBIX_PASSWORD"
+        echo ""
+        echo -e "${YELLOW}Current values:${NC}"
+        echo -e "  ZABBIX_API_TOKEN: ${ZABBIX_API_TOKEN:-'not set'}"
+        echo -e "  ZABBIX_USER: ${ZABBIX_USER:-'not set'}"
+        echo -e "  ZABBIX_PASSWORD: ${ZABBIX_PASSWORD:-'not set'}"
         exit 1
     fi
     
