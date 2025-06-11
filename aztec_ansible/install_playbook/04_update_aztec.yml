@@ -16,10 +16,26 @@
         echo "Server: {{ inventory_hostname }}"
         echo "Date: $(date)"
         echo "Current user: $(whoami)"
-        echo "Running aztec-up latest..."
+        echo "Running aztec-up latest with retry..."
 
-        # Use login shell to load full environment
-        bash -l -c "aztec-up latest" 2>&1 || echo "aztec-up failed with exit code: $?"
+        # Retry mechanism for network issues
+        for attempt in 1 2 3; do
+          echo "Attempt $attempt of 3..."
+          if bash -l -c "aztec-up latest" 2>&1; then
+            echo "Update successful on attempt $attempt"
+            break
+          else
+            exit_code=$?
+            echo "Attempt $attempt failed with exit code: $exit_code"
+            if [ $attempt -eq 3 ]; then
+              echo "All attempts failed, giving up"
+              exit $exit_code
+            else
+              echo "Waiting 10 seconds before retry..."
+              sleep 10
+            fi
+          fi
+        done
 
         echo "Restarting service..."
         systemctl restart aztec-node.service
@@ -28,8 +44,10 @@
       args:
         executable: /bin/bash
       register: aztec_update_result
-      async: 1200 # 20 minutes timeout
-      poll: 10
+      async: 1800 # 30 minutes timeout (increased)
+      poll: 15
+      retries: 1
+      delay: 30
 
     - name: Show aztec-up output
       debug:
