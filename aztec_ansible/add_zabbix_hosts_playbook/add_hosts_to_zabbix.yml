@@ -1,0 +1,79 @@
+# @format
+---
+- name: Add Aztec hosts to Zabbix monitoring
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    zabbix_server: "{{ lookup('env', 'ZABBIX_SERVER') }}"
+    zabbix_user: "{{ lookup('env', 'ZABBIX_USER') }}"
+    zabbix_password: "{{ lookup('env', 'ZABBIX_PASSWORD') }}"
+    inventory_file: "{{ inventory_file_path | default('aztec_ansible/common/inventory/hosts') }}"
+    script_path: "{{ script_file_path | default('./add_aztec_hosts_to_zabbix.sh') }}"
+
+  pre_tasks:
+    - name: Validate required environment variables
+      fail:
+        msg: "Environment variable {{ item }} is not set"
+      when: vars[item] == ""
+      loop:
+        - zabbix_server
+        - zabbix_user
+        - zabbix_password
+
+    - name: Check if inventory file exists
+      stat:
+        path: "{{ inventory_file }}"
+      register: inventory_check
+
+    - name: Fail if inventory file does not exist
+      fail:
+        msg: "Inventory file {{ inventory_file }} does not exist"
+      when: not inventory_check.stat.exists
+
+    - name: Check if Zabbix script exists
+      stat:
+        path: "{{ script_path }}"
+      register: script_check
+
+    - name: Fail if Zabbix script does not exist
+      fail:
+        msg: "Zabbix script {{ script_path }} does not exist"
+      when: not script_check.stat.exists
+
+    - name: Make script executable
+      file:
+        path: "{{ script_path }}"
+        mode: "0755"
+
+  tasks:
+    - name: Display configuration
+      debug:
+        msg: |
+          Zabbix Server: {{ zabbix_server }}
+          Zabbix User: {{ zabbix_user }}
+          Inventory File: {{ inventory_file }}
+          Script Path: {{ script_path }}
+
+    - name: Run Zabbix host addition script
+      shell: |
+        export ZABBIX_SERVER="{{ zabbix_server }}"
+        export ZABBIX_USER="{{ zabbix_user }}"
+        export ZABBIX_PASSWORD="{{ zabbix_password }}"
+        {{ script_path }} {{ inventory_file }}
+      register: script_result
+      changed_when: true
+
+    - name: Display script output
+      debug:
+        var: script_result.stdout_lines
+
+    - name: Display script errors if any
+      debug:
+        var: script_result.stderr_lines
+      when: script_result.stderr_lines is defined and script_result.stderr_lines | length > 0
+
+    - name: Check script exit code
+      fail:
+        msg: "Script failed with exit code {{ script_result.rc }}"
+      when: script_result.rc != 0

@@ -1,13 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <zabbix_export>
     <version>6.4</version>
-    <date>2024-01-15T12:00:00Z</date>
-    <groups>
-        <group>
-            <uuid>7df96b18c230490a9a0a9e2307226338</uuid>
-            <name>Templates</name>
-        </group>
-    </groups>
     <templates>
         <template>
             <uuid>b0c3b8e8d1234567890abcdef1234567</uuid>

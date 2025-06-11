@@ -5,10 +5,10 @@
 
 set -e
 
-# Configuration
-ZABBIX_SERVER="http://your-zabbix-server/zabbix"  # Change this!
-ZABBIX_USER="Admin"                               # Change this!
-ZABBIX_PASSWORD="zabbix"                         # Change this!
+# Configuration - can be overridden by environment variables
+ZABBIX_SERVER="${ZABBIX_SERVER:-http://your-zabbix-server/zabbix}"
+ZABBIX_USER="${ZABBIX_USER:-Admin}"
+ZABBIX_PASSWORD="${ZABBIX_PASSWORD:-zabbix}"
 TEMPLATE_NAME="Template Aztec Node Monitoring"
 HOSTGROUP_NAME="Aztec Nodes"
 
@@ -214,7 +214,18 @@ main() {
     
     # Check Zabbix server URL
     if [[ "$ZABBIX_SERVER" == *"your-zabbix-server"* ]]; then
-        echo -e "${RED}Please configure ZABBIX_SERVER variable in the script!${NC}"
+        echo -e "${RED}Please set ZABBIX_SERVER environment variable or configure it in the script!${NC}"
+        echo -e "${YELLOW}Example: export ZABBIX_SERVER=http://your-zabbix-server/zabbix${NC}"
+        exit 1
+    fi
+    
+    # Check if essential variables are set
+    if [[ -z "$ZABBIX_SERVER" || -z "$ZABBIX_USER" || -z "$ZABBIX_PASSWORD" ]]; then
+        echo -e "${RED}Error: Required configuration variables are not set!${NC}"
+        echo -e "${YELLOW}Required environment variables:${NC}"
+        echo -e "  ZABBIX_SERVER (current: ${ZABBIX_SERVER:-'not set'})"
+        echo -e "  ZABBIX_USER (current: ${ZABBIX_USER:-'not set'})"
+        echo -e "  ZABBIX_PASSWORD (current: ${ZABBIX_PASSWORD:-'not set'})"
         exit 1
     fi
     
