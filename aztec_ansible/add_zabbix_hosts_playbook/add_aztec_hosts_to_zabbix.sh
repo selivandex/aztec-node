@@ -14,6 +14,7 @@ ZABBIX_USER="${ZABBIX_USER:-Admin}"
 ZABBIX_PASSWORD="${ZABBIX_PASSWORD:-zabbix}"
 TEMPLATE_NAME="Template Aztec Node Monitoring"
 HOSTGROUP_NAME="Aztec Nodes"
+LINUX_HOSTGROUP_NAME="Linux servers"  # Second hostgroup for Linux monitoring
 FORCE_RECREATE="${FORCE_RECREATE:-false}"  # New option to force recreate existing hosts
 
 # Colors for output
@@ -135,6 +136,33 @@ get_hostgroup_id() {
     return 0
 }
 
+# Function to get or create Linux hostgroup
+get_linux_hostgroup_id() {
+    echo -e "${YELLOW}Getting Linux hostgroup ID...${NC}"
+    
+    local response=$(zabbix_api_call "hostgroup.get" "{
+        \"output\": [\"groupid\"],
+        \"filter\": {
+            \"name\": [\"${LINUX_HOSTGROUP_NAME}\"]
+        }
+    }")
+    
+    LINUX_HOSTGROUP_ID=$(echo "$response" | python3 -c "import sys, json; result = json.load(sys.stdin)['result']; print(result[0]['groupid'] if result else '')" 2>/dev/null)
+    
+    if [ -z "$LINUX_HOSTGROUP_ID" ]; then
+        echo -e "${YELLOW}Creating Linux hostgroup '${LINUX_HOSTGROUP_NAME}'...${NC}"
+        
+        local create_response=$(zabbix_api_call "hostgroup.create" "{
+            \"name\": \"${LINUX_HOSTGROUP_NAME}\"
+        }")
+        
+        LINUX_HOSTGROUP_ID=$(echo "$create_response" | python3 -c "import sys, json; print(json.load(sys.stdin)['result']['groupids'][0])" 2>/dev/null)
+    fi
+    
+    echo -e "${GREEN}Linux Hostgroup ID: ${LINUX_HOSTGROUP_ID}${NC}"
+    return 0
+}
+
 # Function to add host to Zabbix
 add_host() {
     local hostname="$1"
@@ -198,6 +226,9 @@ add_host() {
         \"groups\": [
             {
                 \"groupid\": \"${HOSTGROUP_ID}\"
+            },
+            {
+                \"groupid\": \"${LINUX_HOSTGROUP_ID}\"
             }
         ],
         \"templates\": [
@@ -479,6 +510,12 @@ main() {
     get_hostgroup_id  
     if [ $? -ne 0 ]; then
         echo -e "${RED}Failed to get hostgroup ID, exiting${NC}"
+        exit 1
+    fi
+    
+    get_linux_hostgroup_id  
+    if [ $? -ne 0 ]; then
+        echo -e "${RED}Failed to get Linux hostgroup ID, exiting${NC}"
         exit 1
     fi
     
