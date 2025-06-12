@@ -3,7 +3,8 @@
 # Script to add Aztec nodes to Zabbix Server via API
 # Usage: ./add_aztec_hosts_to_zabbix.sh
 
-set -e
+# Note: Temporarily disabled set -e to prevent script termination on individual host failures
+# set -e
 
 # Configuration - can be overridden by environment variables
 ZABBIX_SERVER="${ZABBIX_SERVER:-http://your-zabbix-server/zabbix}"
@@ -295,7 +296,10 @@ read_hosts_from_inventory() {
             echo -e "${YELLOW}Found ${#host_lines[@]} host entries to process${NC}"
             
             # Process each host line
-            for line in "${host_lines[@]}"; do
+            for i in "${!host_lines[@]}"; do
+                local line="${host_lines[$i]}"
+                echo -e "${BLUE}=== Processing host $((i+1))/${#host_lines[@]} ===${NC}"
+                
                 hostname=$(echo "$line" | awk '{print $1}')
                 ip_address=$(echo "$line" | grep -o "ansible_host=[0-9.]*" | cut -d= -f2)
                 
@@ -304,14 +308,19 @@ read_hosts_from_inventory() {
                 echo -e "${YELLOW}  IP Address: '$ip_address'${NC}"
                 
                 if [ -n "$hostname" ] && [ -n "$ip_address" ]; then
+                    echo -e "${BLUE}Calling add_host function for $hostname...${NC}"
                     # Use set +e to continue on errors
                     set +e
                     add_host "$hostname" "$ip_address"
                     local exit_code=$?
-                    set -e
+                    # Keep set +e to prevent script termination on errors
+                    # set -e
+                    
+                    echo -e "${BLUE}add_host returned exit code: $exit_code${NC}"
                     
                     if [ $exit_code -eq 0 ]; then
                         ((hosts_added++))
+                        echo -e "${GREEN}Successfully processed host $hostname${NC}"
                     else
                         ((hosts_failed++))
                         echo -e "${RED}  Failed to add host '$hostname'${NC}"
@@ -321,7 +330,8 @@ read_hosts_from_inventory() {
                     ((hosts_failed++))
                 fi
                 
-                echo -e "${BLUE}--- Completed processing $hostname ---${NC}"
+                echo -e "${BLUE}--- Completed processing $hostname (${i+1}/${#host_lines[@]}) ---${NC}"
+                echo ""
             done
             
             echo -e "${GREEN}Total hosts processed (alternative method): ${hosts_added}${NC}"
@@ -345,7 +355,10 @@ read_hosts_from_inventory() {
     echo -e "${YELLOW}Found ${#host_lines[@]} host entries to process (original method)${NC}"
     
     # Process each host line
-    for line in "${host_lines[@]}"; do
+    for i in "${!host_lines[@]}"; do
+        local line="${host_lines[$i]}"
+        echo -e "${BLUE}=== Processing host $((i+1))/${#host_lines[@]} ===${NC}"
+        
         hostname=$(echo "$line" | awk '{print $1}')
         ip_address=$(echo "$line" | grep -o "ansible_host=[0-9.]*" | cut -d= -f2)
         
@@ -354,14 +367,19 @@ read_hosts_from_inventory() {
         echo -e "${YELLOW}  IP Address: '$ip_address'${NC}"
         
         if [ -n "$hostname" ] && [ -n "$ip_address" ]; then
+            echo -e "${BLUE}Calling add_host function for $hostname...${NC}"
             # Use set +e to continue on errors
             set +e
             add_host "$hostname" "$ip_address"
             local exit_code=$?
-            set -e
+            # Keep set +e to prevent script termination on errors
+            # set -e
+            
+            echo -e "${BLUE}add_host returned exit code: $exit_code${NC}"
             
             if [ $exit_code -eq 0 ]; then
                 ((hosts_added++))
+                echo -e "${GREEN}Successfully processed host $hostname${NC}"
             else
                 ((hosts_failed++))
                 echo -e "${RED}  Failed to add host '$hostname'${NC}"
@@ -371,7 +389,8 @@ read_hosts_from_inventory() {
             ((hosts_failed++))
         fi
         
-        echo -e "${BLUE}--- Completed processing $hostname ---${NC}"
+        echo -e "${BLUE}--- Completed processing $hostname (${i+1}/${#host_lines[@]}) ---${NC}"
+        echo ""
     done
     
     echo -e "${GREEN}Total hosts processed: ${hosts_added}${NC}"
