@@ -15,6 +15,9 @@ INVENTORY_NAME="${1:-hosts}"
 INVENTORY_PATH="../common/inventory/$INVENTORY_NAME"
 SSH_KEY="../common/ssh/id_rsa"
 
+# SSH options to avoid host key checking
+SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR"
+
 log() {
     echo -e "${GREEN}[$(date '+%H:%M:%S')] $1${NC}"
 }
@@ -38,12 +41,14 @@ log "=== Fixing Zabbix AllowRoot issue on all servers ==="
 # Step 1: Remove AllowRoot from config files
 log "Step 1: Removing AllowRoot from all Zabbix configs..."
 ansible all -i "$INVENTORY_PATH" --private-key="$SSH_KEY" \
+  --ssh-extra-args="$SSH_OPTS" \
   -m shell -a "sed -i '/AllowRoot=1/d' /etc/zabbix/zabbix_agent2.conf" \
   --become || error "Failed to remove AllowRoot from some servers"
 
 # Step 2: Restart all agents
 log "Step 2: Restarting all Zabbix agents..."
 ansible all -i "$INVENTORY_PATH" --private-key="$SSH_KEY" \
+  --ssh-extra-args="$SSH_OPTS" \
   -m systemd -a "name=zabbix-agent2 state=restarted" \
   --become || error "Failed to restart some agents"
 
@@ -54,6 +59,7 @@ sleep 5
 log "Step 3: Checking agent status on all servers..."
 echo ""
 ansible all -i "$INVENTORY_PATH" --private-key="$SSH_KEY" \
+  --ssh-extra-args="$SSH_OPTS" \
   -m shell -a "systemctl is-active zabbix-agent2 && echo 'Agent OK on' \$(hostname)" \
   --become
 
@@ -62,6 +68,7 @@ echo ""
 # Step 4: Verify AllowRoot is gone
 log "Step 4: Verifying AllowRoot is removed from all configs..."
 ansible all -i "$INVENTORY_PATH" --private-key="$SSH_KEY" \
+  --ssh-extra-args="$SSH_OPTS" \
   -m shell -a "if grep -q 'AllowRoot' /etc/zabbix/zabbix_agent2.conf; then echo 'ERROR: AllowRoot still present'; exit 1; else echo 'OK: AllowRoot removed'; fi" \
   --become
 
@@ -70,5 +77,5 @@ success "=== AllowRoot issue fixed on all servers! ==="
 
 log "Next steps:"
 echo "  1. Check Zabbix Server for agent connectivity"
-echo "  2. Test UserParameters: ansible all -i $INVENTORY_PATH --private-key=$SSH_KEY -m shell -a 'zabbix_agent2 -t aztec.service.status' --become"
+echo "  2. Test UserParameters: ansible all -i $INVENTORY_PATH --private-key=$SSH_KEY --ssh-extra-args=\"$SSH_OPTS\" -m shell -a 'zabbix_agent2 -t aztec.service.status' --become"
 echo "  3. Monitor logs: journalctl -u zabbix-agent2.service -f" 
