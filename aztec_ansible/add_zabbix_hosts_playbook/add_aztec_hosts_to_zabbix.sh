@@ -13,6 +13,7 @@ ZABBIX_USER="${ZABBIX_USER:-Admin}"
 ZABBIX_PASSWORD="${ZABBIX_PASSWORD:-zabbix}"
 TEMPLATE_NAME="Template Aztec Node Monitoring"
 HOSTGROUP_NAME="Aztec Nodes"
+FORCE_RECREATE="${FORCE_RECREATE:-false}"  # New option to force recreate existing hosts
 
 # Colors for output
 RED='\033[0;31m'
@@ -51,7 +52,7 @@ authenticate() {
         if [ "$test_result" != "ok" ]; then
             echo -e "${RED}API Token validation failed! Check your token.${NC}"
             echo "Response: $test_response"
-            exit 1
+            return 1
         fi
         
         echo -e "${GREEN}API Token validated successfully!${NC}"
@@ -76,11 +77,12 @@ authenticate() {
         if [ -z "$AUTH_TOKEN" ]; then
             echo -e "${RED}Authentication failed! Check your credentials.${NC}"
             echo "Response: $response"
-            exit 1
+            return 1
         fi
         
         echo -e "${GREEN}Successfully authenticated with username/password!${NC}"
     fi
+    return 0
 }
 
 # Function to get template ID
@@ -98,10 +100,11 @@ get_template_id() {
     
     if [ -z "$TEMPLATE_ID" ]; then
         echo -e "${RED}Template '${TEMPLATE_NAME}' not found! Import it first.${NC}"
-        exit 1
+        return 1
     fi
     
     echo -e "${GREEN}Template ID: ${TEMPLATE_ID}${NC}"
+    return 0
 }
 
 # Function to get or create hostgroup
@@ -128,6 +131,7 @@ get_hostgroup_id() {
     fi
     
     echo -e "${GREEN}Hostgroup ID: ${HOSTGROUP_ID}${NC}"
+    return 0
 }
 
 # Function to add host to Zabbix
@@ -148,11 +152,35 @@ add_host() {
     local existing_id=$(echo "$existing" | python3 -c "import sys, json; result = json.load(sys.stdin)['result']; print(result[0]['hostid'] if result else '')" 2>/dev/null)
     
     if [ -n "$existing_id" ]; then
-        echo -e "${YELLOW}Host ${hostname} already exists (ID: ${existing_id})${NC}"
-        return
+        if [ "$FORCE_RECREATE" = "true" ]; then
+            echo -e "${YELLOW}Host ${hostname} exists (ID: ${existing_id}), deleting for recreation...${NC}"
+            local delete_response=$(zabbix_api_call "host.delete" "[\"${existing_id}\"]")
+            echo -e "${YELLOW}Delete response: ${delete_response}${NC}"
+            sleep 2  # Wait for deletion to complete
+        else
+            echo -e "${YELLOW}Host ${hostname} already exists (ID: ${existing_id})${NC}"
+            
+            # Verify the host is really there
+            local verify_existing=$(zabbix_api_call "host.get" "{
+                \"output\": [\"hostid\", \"host\", \"name\", \"status\"],
+                \"hostids\": [\"${existing_id}\"]
+            }")
+            
+            local verified_existing=$(echo "$verify_existing" | python3 -c "import sys, json; result = json.load(sys.stdin)['result']; print(result[0]['host'] if result else 'NOT_FOUND')" 2>/dev/null)
+            
+            if [ "$verified_existing" = "$hostname" ]; then
+                echo -e "${GREEN}✓ Host ${hostname} verified as existing in Zabbix${NC}"
+                return 0
+            else
+                echo -e "${RED}⚠ Host ${hostname} ID exists but verification failed - will recreate${NC}"
+                echo -e "${YELLOW}Verification response: ${verify_existing}${NC}"
+                # Continue to creation since verification failed
+            fi
+        fi
     fi
     
     # Create host
+    echo -e "${YELLOW}Creating host ${hostname}...${NC}"
     local response=$(zabbix_api_call "host.create" "{
         \"host\": \"${hostname}\",
         \"name\": \"${hostname}\",
@@ -178,13 +206,41 @@ add_host() {
         ]
     }")
     
-    local host_id=$(echo "$response" | python3 -c "import sys, json; print(json.load(sys.stdin)['result']['hostids'][0])" 2>/dev/null)
+    echo -e "${YELLOW}API Response: ${response}${NC}"
+    
+    # Check if response contains error
+    local error_msg=$(echo "$response" | python3 -c "import sys, json; data = json.load(sys.stdin); print(data.get('error', {}).get('data', ''))" 2>/dev/null)
+    if [ -n "$error_msg" ]; then
+        echo -e "${RED}✗ API Error: ${error_msg}${NC}"
+        return 1
+    fi
+    
+    local host_id=$(echo "$response" | python3 -c "import sys, json; result = json.load(sys.stdin).get('result', {}); print(result.get('hostids', [''])[0])" 2>/dev/null)
     
     if [ -n "$host_id" ]; then
-        echo -e "${GREEN}✓ Host ${hostname} added successfully (ID: ${host_id})${NC}"
+        echo -e "${GREEN}✓ Host ${hostname} created with ID: ${host_id}${NC}"
+        
+        # Verify host was actually created
+        sleep 1
+        local verify_response=$(zabbix_api_call "host.get" "{
+            \"output\": [\"hostid\", \"host\", \"name\", \"status\"],
+            \"hostids\": [\"${host_id}\"]
+        }")
+        
+        local verified_host=$(echo "$verify_response" | python3 -c "import sys, json; result = json.load(sys.stdin)['result']; print(result[0]['host'] if result else '')" 2>/dev/null)
+        
+        if [ "$verified_host" = "$hostname" ]; then
+            echo -e "${GREEN}✓ Host ${hostname} verified successfully in Zabbix${NC}"
+            return 0
+        else
+            echo -e "${RED}✗ Host ${hostname} verification failed - not found in Zabbix${NC}"
+            echo -e "${YELLOW}Verification response: ${verify_response}${NC}"
+            return 1
+        fi
     else
-        echo -e "${RED}✗ Failed to add host ${hostname}${NC}"
-        echo "Response: $response"
+        echo -e "${RED}✗ Failed to add host ${hostname} - no host ID returned${NC}"
+        echo -e "${YELLOW}Full response: $response${NC}"
+        return 1
     fi
 }
 
@@ -305,10 +361,18 @@ main() {
     if [ $# -eq 0 ]; then
         echo "Usage: $0 <inventory_file>"
         echo "Example: $0 aztec_ansible/common/inventory/hosts"
+        echo ""
+        echo "Environment variables:"
+        echo "  FORCE_RECREATE=true  - Delete and recreate existing hosts"
         exit 1
     fi
     
     local inventory_file="$1"
+    
+    echo -e "${BLUE}Configuration:${NC}"
+    echo -e "  Force recreate: ${FORCE_RECREATE}"
+    echo -e "  Inventory file: ${inventory_file}"
+    echo ""
     
     # Validate dependencies
     if ! command -v python3 &> /dev/null; then
@@ -354,13 +418,32 @@ main() {
         exit 1
     fi
     
-    # Execute steps
+    # Execute steps - disable strict error handling to continue on individual host failures
+    set +e
     authenticate
+    if [ $? -ne 0 ]; then
+        echo -e "${RED}Authentication failed, exiting${NC}"
+        exit 1
+    fi
+    
     get_template_id
-    get_hostgroup_id
+    if [ $? -ne 0 ]; then
+        echo -e "${RED}Failed to get template ID, exiting${NC}"
+        exit 1
+    fi
+    
+    get_hostgroup_id  
+    if [ $? -ne 0 ]; then
+        echo -e "${RED}Failed to get hostgroup ID, exiting${NC}"
+        exit 1
+    fi
+    
     read_hosts_from_inventory "$inventory_file"
+    local final_result=$?
+    set -e
     
     echo -e "${GREEN}=== Finished adding hosts to Zabbix ===${NC}"
+    exit $final_result
 }
 
 # Run main function

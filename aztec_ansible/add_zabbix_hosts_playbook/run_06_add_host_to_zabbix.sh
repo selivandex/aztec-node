@@ -40,6 +40,7 @@ ${YELLOW}Options:${NC}
     -h, --help        - Show this help message
     -v, --verbose     - Enable verbose output
     -s, --script-path - Path to add_aztec_hosts_to_zabbix.sh script (default: ${SCRIPT_PATH})
+    --force-recreate  - Delete and recreate existing hosts instead of skipping them
     --check           - Run Ansible in check mode (dry run)
     --tags            - Run only tasks with specified tags
     --skip-tags       - Skip tasks with specified tags
@@ -121,6 +122,7 @@ INVENTORY_FILE=""
 ANSIBLE_ARGS=""
 VERBOSE=""
 SCRIPT_PATH_OVERRIDE=""
+FORCE_RECREATE_HOSTS=""
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -135,6 +137,10 @@ while [[ $# -gt 0 ]]; do
         -s|--script-path)
             SCRIPT_PATH_OVERRIDE="$2"
             shift 2
+            ;;
+        --force-recreate)
+            FORCE_RECREATE_HOSTS="true"
+            shift
             ;;
         --check)
             ANSIBLE_ARGS="$ANSIBLE_ARGS --check"
@@ -197,6 +203,10 @@ main() {
         echo -e "  Ansible Args: ${ANSIBLE_ARGS}"
     fi
     
+    if [[ "$FORCE_RECREATE_HOSTS" = "true" ]]; then
+        echo -e "  Force Recreate: ${FORCE_RECREATE_HOSTS}"
+    fi
+    
     echo ""
     
     # Export environment variables for ansible
@@ -204,6 +214,7 @@ main() {
     export ZABBIX_API_TOKEN
     export ZABBIX_USER
     export ZABBIX_PASSWORD
+    export FORCE_RECREATE="${FORCE_RECREATE_HOSTS}"
     
     # Build ansible-playbook command
     ANSIBLE_CMD="ansible-playbook $VERBOSE $ANSIBLE_ARGS"
