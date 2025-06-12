@@ -283,34 +283,47 @@ read_hosts_from_inventory() {
             # Parse Ansible inventory format - alternative method
             local hosts_added=0
             local hosts_failed=0
+            
+            # Read all matching lines into an array first
+            local host_lines=()
             while IFS= read -r line; do
                 if [[ -n "$line" && ! "$line" =~ ^# && ! "$line" =~ ^\[ ]]; then
-                    hostname=$(echo "$line" | awk '{print $1}')
-                    ip_address=$(echo "$line" | grep -o "ansible_host=[0-9.]*" | cut -d= -f2)
-                    
-                    echo -e "${YELLOW}Processing line: $line${NC}"
-                    echo -e "${YELLOW}  Hostname: '$hostname'${NC}"
-                    echo -e "${YELLOW}  IP Address: '$ip_address'${NC}"
-                    
-                    if [ -n "$hostname" ] && [ -n "$ip_address" ]; then
-                        # Use set +e to continue on errors
-                        set +e
-                        add_host "$hostname" "$ip_address"
-                        local exit_code=$?
-                        set -e
-                        
-                        if [ $exit_code -eq 0 ]; then
-                            ((hosts_added++))
-                        else
-                            ((hosts_failed++))
-                            echo -e "${RED}  Failed to add host '$hostname'${NC}"
-                        fi
-                    else
-                        echo -e "${RED}  Skipping - missing hostname or IP${NC}"
-                        ((hosts_failed++))
-                    fi
+                    host_lines+=("$line")
                 fi
             done < <(grep "ansible_host=" "$inventory_file")
+            
+            echo -e "${YELLOW}Found ${#host_lines[@]} host entries to process${NC}"
+            
+            # Process each host line
+            for line in "${host_lines[@]}"; do
+                hostname=$(echo "$line" | awk '{print $1}')
+                ip_address=$(echo "$line" | grep -o "ansible_host=[0-9.]*" | cut -d= -f2)
+                
+                echo -e "${YELLOW}Processing line: $line${NC}"
+                echo -e "${YELLOW}  Hostname: '$hostname'${NC}"
+                echo -e "${YELLOW}  IP Address: '$ip_address'${NC}"
+                
+                if [ -n "$hostname" ] && [ -n "$ip_address" ]; then
+                    # Use set +e to continue on errors
+                    set +e
+                    add_host "$hostname" "$ip_address"
+                    local exit_code=$?
+                    set -e
+                    
+                    if [ $exit_code -eq 0 ]; then
+                        ((hosts_added++))
+                    else
+                        ((hosts_failed++))
+                        echo -e "${RED}  Failed to add host '$hostname'${NC}"
+                    fi
+                else
+                    echo -e "${RED}  Skipping - missing hostname or IP${NC}"
+                    ((hosts_failed++))
+                fi
+                
+                echo -e "${BLUE}--- Completed processing $hostname ---${NC}"
+            done
+            
             echo -e "${GREEN}Total hosts processed (alternative method): ${hosts_added}${NC}"
             echo -e "${RED}Total hosts failed: ${hosts_failed}${NC}"
             return 0  # Always return success to prevent script termination
@@ -320,34 +333,46 @@ read_hosts_from_inventory() {
     # Parse Ansible inventory format - original method
     local hosts_added=0
     local hosts_failed=0
+    
+    # Read all matching lines into an array first
+    local host_lines=()
     while IFS= read -r line; do
         if [[ -n "$line" && ! "$line" =~ ^# ]]; then
-            hostname=$(echo "$line" | awk '{print $1}')
-            ip_address=$(echo "$line" | grep -o "ansible_host=[0-9.]*" | cut -d= -f2)
-            
-            echo -e "${YELLOW}Processing line: $line${NC}"
-            echo -e "${YELLOW}  Hostname: '$hostname'${NC}"
-            echo -e "${YELLOW}  IP Address: '$ip_address'${NC}"
-            
-            if [ -n "$hostname" ] && [ -n "$ip_address" ]; then
-                # Use set +e to continue on errors
-                set +e
-                add_host "$hostname" "$ip_address"
-                local exit_code=$?
-                set -e
-                
-                if [ $exit_code -eq 0 ]; then
-                    ((hosts_added++))
-                else
-                    ((hosts_failed++))
-                    echo -e "${RED}  Failed to add host '$hostname'${NC}"
-                fi
-            else
-                echo -e "${RED}  Skipping - missing hostname or IP${NC}"
-                ((hosts_failed++))
-            fi
+            host_lines+=("$line")
         fi
     done < <(grep -E "^[0-9]" "$inventory_file")
+    
+    echo -e "${YELLOW}Found ${#host_lines[@]} host entries to process (original method)${NC}"
+    
+    # Process each host line
+    for line in "${host_lines[@]}"; do
+        hostname=$(echo "$line" | awk '{print $1}')
+        ip_address=$(echo "$line" | grep -o "ansible_host=[0-9.]*" | cut -d= -f2)
+        
+        echo -e "${YELLOW}Processing line: $line${NC}"
+        echo -e "${YELLOW}  Hostname: '$hostname'${NC}"
+        echo -e "${YELLOW}  IP Address: '$ip_address'${NC}"
+        
+        if [ -n "$hostname" ] && [ -n "$ip_address" ]; then
+            # Use set +e to continue on errors
+            set +e
+            add_host "$hostname" "$ip_address"
+            local exit_code=$?
+            set -e
+            
+            if [ $exit_code -eq 0 ]; then
+                ((hosts_added++))
+            else
+                ((hosts_failed++))
+                echo -e "${RED}  Failed to add host '$hostname'${NC}"
+            fi
+        else
+            echo -e "${RED}  Skipping - missing hostname or IP${NC}"
+            ((hosts_failed++))
+        fi
+        
+        echo -e "${BLUE}--- Completed processing $hostname ---${NC}"
+    done
     
     echo -e "${GREEN}Total hosts processed: ${hosts_added}${NC}"
     echo -e "${RED}Total hosts failed: ${hosts_failed}${NC}"
