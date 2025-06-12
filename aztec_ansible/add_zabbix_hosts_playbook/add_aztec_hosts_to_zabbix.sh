@@ -226,6 +226,7 @@ read_hosts_from_inventory() {
             echo -e "${YELLOW}Using alternative parsing for ansible_host format...${NC}"
             # Parse Ansible inventory format - alternative method
             local hosts_added=0
+            local hosts_failed=0
             while IFS= read -r line; do
                 if [[ -n "$line" && ! "$line" =~ ^# && ! "$line" =~ ^\[ ]]; then
                     hostname=$(echo "$line" | awk '{print $1}')
@@ -236,20 +237,33 @@ read_hosts_from_inventory() {
                     echo -e "${YELLOW}  IP Address: '$ip_address'${NC}"
                     
                     if [ -n "$hostname" ] && [ -n "$ip_address" ]; then
+                        # Use set +e to continue on errors
+                        set +e
                         add_host "$hostname" "$ip_address"
-                        ((hosts_added++))
+                        local exit_code=$?
+                        set -e
+                        
+                        if [ $exit_code -eq 0 ]; then
+                            ((hosts_added++))
+                        else
+                            ((hosts_failed++))
+                            echo -e "${RED}  Failed to add host '$hostname'${NC}"
+                        fi
                     else
                         echo -e "${RED}  Skipping - missing hostname or IP${NC}"
+                        ((hosts_failed++))
                     fi
                 fi
             done < <(grep "ansible_host=" "$inventory_file")
             echo -e "${GREEN}Total hosts processed (alternative method): ${hosts_added}${NC}"
-            return
+            echo -e "${RED}Total hosts failed: ${hosts_failed}${NC}"
+            return 0  # Always return success to prevent script termination
         fi
     fi
     
     # Parse Ansible inventory format - original method
     local hosts_added=0
+    local hosts_failed=0
     while IFS= read -r line; do
         if [[ -n "$line" && ! "$line" =~ ^# ]]; then
             hostname=$(echo "$line" | awk '{print $1}')
@@ -260,15 +274,27 @@ read_hosts_from_inventory() {
             echo -e "${YELLOW}  IP Address: '$ip_address'${NC}"
             
             if [ -n "$hostname" ] && [ -n "$ip_address" ]; then
+                # Use set +e to continue on errors
+                set +e
                 add_host "$hostname" "$ip_address"
-                ((hosts_added++))
+                local exit_code=$?
+                set -e
+                
+                if [ $exit_code -eq 0 ]; then
+                    ((hosts_added++))
+                else
+                    ((hosts_failed++))
+                    echo -e "${RED}  Failed to add host '$hostname'${NC}"
+                fi
             else
                 echo -e "${RED}  Skipping - missing hostname or IP${NC}"
+                ((hosts_failed++))
             fi
         fi
     done < <(grep -E "^[0-9]" "$inventory_file")
     
     echo -e "${GREEN}Total hosts processed: ${hosts_added}${NC}"
+    echo -e "${RED}Total hosts failed: ${hosts_failed}${NC}"
 }
 
 # Main execution
