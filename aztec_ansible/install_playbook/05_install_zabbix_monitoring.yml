@@ -61,15 +61,6 @@
         backup: yes
       notify: restart zabbix-agent2
 
-    - name: Create PSK file for encryption
-      copy:
-        content: "8f8a9265bca2fe4c8864f8ba04f0e3e67fb052312bfc9eec447492c34be0edbb"
-        dest: /etc/zabbix/zabbix_agent2.psk
-        owner: zabbix
-        group: zabbix
-        mode: "0600"
-      notify: restart zabbix-agent2
-
     - name: Create Aztec monitoring script
       copy:
         dest: /usr/local/bin/aztec_monitor.sh

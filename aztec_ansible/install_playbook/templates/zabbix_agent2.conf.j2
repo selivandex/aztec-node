@@ -35,11 +35,11 @@ ControlSocket=/tmp/agent.sock
 # Host metadata (for auto-registration)  
 HostMetadata=aztec-node,{{ ansible_distribution }},{{ ansible_distribution_version }}
 
-# PSK encryption for autoregistration
-TLSConnect=psk
-TLSAccept=psk
-TLSPSKIdentity=aztec-nodes-psk
-TLSPSKFile=/etc/zabbix/zabbix_agent2.psk
+# PSK encryption for autoregistration (disabled)
+# TLSConnect=psk
+# TLSAccept=psk
+# TLSPSKIdentity=aztec-nodes-psk
+# TLSPSKFile=/etc/zabbix/zabbix_agent2.psk
 
 # Refresh active checks
 RefreshActiveChecks=120 
