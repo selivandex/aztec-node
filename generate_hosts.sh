@@ -138,7 +138,7 @@ def parse_csv_row(row: Dict[str, str], row_num: int) -> Optional[Dict[str, str]]
         'private_key': private_key
     }
 
-def create_hosts_file(servers: List[Dict[str, str]], hosts_path: str) -> None:
+def create_hosts_file(servers: List[Dict[str, str]], hosts_path: str, server_prefix: str) -> None:
     """Create Ansible hosts file."""
     try:
         with open(hosts_path, 'w') as hosts_file:
@@ -150,7 +150,7 @@ def create_hosts_file(servers: List[Dict[str, str]], hosts_path: str) -> None:
                 private_key_b64 = base64.b64encode(server['private_key'].encode()).decode()
                 
                 hosts_file.write(
-                    f"node{i} ansible_host={server['ip']} "
+                    f"{server_prefix}{i} ansible_host={server['ip']} "
                     f"ansible_ssh_user=ubuntu "
                     f"server_ip={server['ip']} "
                     f"eth_address_b64={eth_address_b64} "
@@ -165,12 +165,13 @@ def create_hosts_file(servers: List[Dict[str, str]], hosts_path: str) -> None:
 
 def main() -> int:
     """Main function."""
-    if len(sys.argv) != 3:
-        error("Usage: python3 converter.py <csv_file> <hosts_file>")
+    if len(sys.argv) < 3 or len(sys.argv) > 4:
+        error("Usage: python3 converter.py <csv_file> <hosts_file> [server_prefix]")
         return 1
     
     csv_file = sys.argv[1]
     hosts_file = sys.argv[2]
+    server_prefix = sys.argv[3] if len(sys.argv) == 4 else "node"
     
     if not os.path.exists(csv_file):
         error(f"CSV file does not exist: {csv_file}")
@@ -203,7 +204,7 @@ def main() -> int:
             return 1
         
         log(f"Found {len(servers)} valid servers")
-        create_hosts_file(servers, hosts_file)
+        create_hosts_file(servers, hosts_file, server_prefix)
         
         success(f"Hosts file created: {hosts_file}")
         return 0
@@ -224,14 +225,16 @@ main() {
     log "=== Generate Hosts Script ==="
     
     # Check arguments
-    if [ "$#" -ne 1 ]; then
-        error "Usage: $0 <path_to_csv>"
+    if [ "$#" -lt 1 ] || [ "$#" -gt 2 ]; then
+        error "Usage: $0 <path_to_csv> [server_prefix]"
         error "Example: $0 wallets_alex.csv"
-        error "Example: $0 servers_stepa.csv"
+        error "Example: $0 wallets_alex.csv validator"
+        error "Example: $0 servers_stepa.csv aztec"
         exit 1
     fi
     
     local CSV_FILE="$1"
+    local SERVER_PREFIX="${2:-node}"
     
     # Convert to absolute path if relative
     if [[ "$CSV_FILE" != /* ]]; then
@@ -263,6 +266,7 @@ main() {
     
     log "CSV file: $CSV_FILE"
     log "Hosts file will be: $HOSTS_FILE"
+    log "Server prefix: $SERVER_PREFIX"
     
     # Create temporary converter script
     local TEMP_CONVERTER=$(mktemp)
@@ -270,7 +274,7 @@ main() {
     
     # Generate hosts file
     log "Generating hosts file..."
-    if python3 "$TEMP_CONVERTER" "$CSV_FILE" "$HOSTS_FILE"; then
+    if python3 "$TEMP_CONVERTER" "$CSV_FILE" "$HOSTS_FILE" "$SERVER_PREFIX"; then
         success "=== Hosts file generated successfully! ==="
         log "Generated: $HOSTS_FILE"
         
