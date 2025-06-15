@@ -187,23 +187,61 @@ add_host() {
             echo -e "${YELLOW}Delete response: ${delete_response}${NC}"
             sleep 2  # Wait for deletion to complete
         else
-            echo -e "${YELLOW}Host ${hostname} already exists (ID: ${existing_id})${NC}"
+            echo -e "${YELLOW}Host ${hostname} already exists (ID: ${existing_id}), updating IP and template...${NC}"
             
-            # Verify the host is really there
-            local verify_existing=$(zabbix_api_call "host.get" "{
-                \"output\": [\"hostid\", \"host\", \"name\", \"status\"],
-                \"hostids\": [\"${existing_id}\"]
+            # Update existing host with correct IP, groups and templates
+            local update_response=$(zabbix_api_call "host.update" "{
+                \"hostid\": \"${existing_id}\",
+                \"interfaces\": [
+                    {
+                        \"type\": 1,
+                        \"main\": 1,
+                        \"useip\": 1,
+                        \"ip\": \"${ip_address}\",
+                        \"dns\": \"\",
+                        \"port\": \"10050\"
+                    }
+                ],
+                \"groups\": [
+                    {
+                        \"groupid\": \"${HOSTGROUP_ID}\"
+                    },
+                    {
+                        \"groupid\": \"${LINUX_HOSTGROUP_ID}\"
+                    }
+                ],
+                $(if [ -n "$TEMPLATE_ID" ]; then
+                    echo "\"templates\": [
+                        {
+                            \"templateid\": \"${TEMPLATE_ID}\"
+                        }
+                    ]"
+                else
+                    echo "\"templates\": []"
+                fi)
             }")
             
-            local verified_existing=$(echo "$verify_existing" | python3 -c "import sys, json; result = json.load(sys.stdin)['result']; print(result[0]['host'] if result else 'NOT_FOUND')" 2>/dev/null)
+            echo -e "${YELLOW}Update API Response: ${update_response}${NC}"
             
-            if [ "$verified_existing" = "$hostname" ]; then
-                echo -e "${GREEN}✓ Host ${hostname} verified as existing in Zabbix${NC}"
+            # Check if update response contains error
+            local update_error_msg=$(echo "$update_response" | python3 -c "import sys, json; data = json.load(sys.stdin); print(data.get('error', {}).get('data', ''))" 2>/dev/null)
+            if [ -n "$update_error_msg" ]; then
+                echo -e "${RED}✗ Update API Error: ${update_error_msg}${NC}"
+                return 1
+            fi
+            
+            local updated_hostid=$(echo "$update_response" | python3 -c "import sys, json; result = json.load(sys.stdin).get('result', {}); print(result.get('hostids', ['${existing_id}'])[0])" 2>/dev/null)
+            
+            if [ -n "$updated_hostid" ]; then
+                if [ -n "$TEMPLATE_ID" ]; then
+                    echo -e "${GREEN}✓ Host ${hostname} updated successfully with IP: ${ip_address} and template${NC}"
+                else
+                    echo -e "${GREEN}✓ Host ${hostname} updated successfully with IP: ${ip_address} (no template)${NC}"
+                fi
                 return 0
             else
-                echo -e "${RED}⚠ Host ${hostname} ID exists but verification failed - will recreate${NC}"
-                echo -e "${YELLOW}Verification response: ${verify_existing}${NC}"
-                # Continue to creation since verification failed
+                echo -e "${RED}✗ Failed to update host ${hostname}${NC}"
+                return 1
             fi
         fi
     fi
@@ -231,11 +269,15 @@ add_host() {
                 \"groupid\": \"${LINUX_HOSTGROUP_ID}\"
             }
         ],
-        \"templates\": [
-            {
-                \"templateid\": \"${TEMPLATE_ID}\"
-            }
-        ]
+        $(if [ -n "$TEMPLATE_ID" ]; then
+            echo "\"templates\": [
+                {
+                    \"templateid\": \"${TEMPLATE_ID}\"
+                }
+            ]"
+        else
+            echo "\"templates\": []"
+        fi)
     }")
     
     echo -e "${YELLOW}API Response: ${response}${NC}"
@@ -250,7 +292,11 @@ add_host() {
     local host_id=$(echo "$response" | python3 -c "import sys, json; result = json.load(sys.stdin).get('result', {}); print(result.get('hostids', [''])[0])" 2>/dev/null)
     
     if [ -n "$host_id" ]; then
-        echo -e "${GREEN}✓ Host ${hostname} created with ID: ${host_id}${NC}"
+        if [ -n "$TEMPLATE_ID" ]; then
+            echo -e "${GREEN}✓ Host ${hostname} created with ID: ${host_id} (with template)${NC}"
+        else
+            echo -e "${GREEN}✓ Host ${hostname} created with ID: ${host_id} (no template - please link manually)${NC}"
+        fi
         
         # Verify host was actually created
         sleep 1
@@ -503,8 +549,10 @@ main() {
     
     get_template_id
     if [ $? -ne 0 ]; then
-        echo -e "${RED}Failed to get template ID, exiting${NC}"
-        exit 1
+        echo -e "${RED}Failed to get template ID, continuing without template${NC}"
+        echo -e "${YELLOW}⚠ Hosts will be created without Aztec monitoring template${NC}"
+        echo -e "${YELLOW}⚠ Please import 'aztec_zabbix_template.xml' and manually link it to hosts${NC}"
+        TEMPLATE_ID=""
     fi
     
     get_hostgroup_id  
@@ -524,6 +572,26 @@ main() {
     set -e
     
     echo -e "${GREEN}=== Finished adding hosts to Zabbix ===${NC}"
+    
+    if [ -z "$TEMPLATE_ID" ]; then
+        echo ""
+        echo -e "${YELLOW}⚠ IMPORTANT: Hosts were created without Aztec monitoring template!${NC}"
+        echo -e "${YELLOW}Next steps:${NC}"
+        echo -e "  1. Import 'aztec_zabbix_template.xml' into your Zabbix server"
+        echo -e "  2. Go to Configuration → Hosts in Zabbix web interface"
+        echo -e "  3. Select your Aztec hosts and link 'Template Aztec Node Monitoring' template"
+        echo -e "  4. Wait 2-3 minutes for monitoring data to appear"
+        echo ""
+    else
+        echo ""
+        echo -e "${GREEN}✅ All hosts configured with Aztec monitoring template!${NC}"
+        echo -e "${GREEN}Next steps:${NC}"
+        echo -e "  1. Check host status in Zabbix web interface"
+        echo -e "  2. Wait 2-3 minutes for monitoring data to appear"
+        echo -e "  3. Configure alerts and notifications as needed"
+        echo ""
+    fi
+    
     exit $final_result
 }
 
