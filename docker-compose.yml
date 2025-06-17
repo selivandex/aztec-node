@@ -1,0 +1,144 @@
+# @format
+
+version: "3.8"
+
+services:
+  # PostgreSQL Database for Zabbix
+  postgres-server:
+    image: postgres:15-alpine
+    container_name: zabbix-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: zabbix
+      POSTGRES_PASSWORD: zabbix_password
+      POSTGRES_DB: zabbix
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - zabbix-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U zabbix"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Zabbix Server
+  zabbix-server:
+    image: zabbix/zabbix-server-pgsql:alpine-6.4-latest
+    container_name: zabbix-server
+    restart: unless-stopped
+    depends_on:
+      postgres-server:
+        condition: service_healthy
+    environment:
+      DB_SERVER_HOST: postgres-server
+      POSTGRES_USER: zabbix
+      POSTGRES_PASSWORD: zabbix_password
+      POSTGRES_DB: zabbix
+      ZBX_STARTVMWARECOLLECTORS: 0
+      ZBX_ENABLE_SNMP_TRAPS: "true"
+      ZBX_CACHESIZE: 128M
+      ZBX_CACHEUPDATEFREQUENCY: 5
+      ZBX_STARTPINGERS: 10
+      ZBX_TIMEOUT: 4
+      # Telegram Bot Configuration
+      TELEGRAM_BOT_TOKEN: "${TELEGRAM_BOT_TOKEN:-}"
+    ports:
+      - "10051:10051"
+    volumes:
+      - zabbix-server-alertscripts:/usr/lib/zabbix/alertscripts
+      - zabbix-server-externalscripts:/usr/lib/zabbix/externalscripts
+      - zabbix-server-modules:/var/lib/zabbix/modules
+      - zabbix-snmptraps:/var/lib/zabbix/snmptraps
+      # Mount Telegram alert script
+      - ./telegram_alert.sh:/usr/lib/zabbix/alertscripts/telegram_alert.sh:ro
+    networks:
+      - zabbix-net
+    ulimits:
+      nproc: 65535
+      nofile:
+        soft: 20000
+        hard: 40000
+
+  # Zabbix Web Frontend (Nginx)
+  zabbix-web:
+    image: zabbix/zabbix-web-nginx-pgsql:alpine-6.4-latest
+    container_name: zabbix-web
+    restart: unless-stopped
+    depends_on:
+      - zabbix-server
+      - postgres-server
+    environment:
+      ZBX_SERVER_HOST: zabbix-server
+      ZBX_SERVER_PORT: 10051
+      DB_SERVER_HOST: postgres-server
+      POSTGRES_USER: zabbix
+      POSTGRES_PASSWORD: zabbix_password
+      POSTGRES_DB: zabbix
+      PHP_TZ: Europe/Moscow
+      ZBX_SERVER_NAME: "My Zabbix Server"
+    ports:
+      - "8123:8080" # Web interface on port 8123
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+    networks:
+      - zabbix-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # Zabbix Agent (monitors the Zabbix server itself)
+  zabbix-agent:
+    image: zabbix/zabbix-agent2:alpine-6.4-latest
+    container_name: zabbix-agent
+    restart: unless-stopped
+    depends_on:
+      - zabbix-server
+    environment:
+      ZBX_SERVER_HOST: zabbix-server
+      ZBX_SERVER_PORT: 10051
+      ZBX_HOSTNAME: "Zabbix server"
+      ZBX_ACTIVE_ALLOW: "true"
+    networks:
+      - zabbix-net
+    privileged: true
+    pid: host
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /dev:/host/dev:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
+  # SNMP Traps receiver (optional)
+  zabbix-snmptraps:
+    image: zabbix/zabbix-snmptraps:alpine-6.4-latest
+    container_name: zabbix-snmptraps
+    restart: unless-stopped
+    ports:
+      - "162:1162/udp"
+    volumes:
+      - zabbix-snmptraps:/var/lib/zabbix/snmptraps
+    networks:
+      - zabbix-net
+
+networks:
+  zabbix-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+volumes:
+  postgres-data:
+    driver: local
+  zabbix-server-alertscripts:
+    driver: local
+  zabbix-server-externalscripts:
+    driver: local
+  zabbix-server-modules:
+    driver: local
+  zabbix-snmptraps:
+    driver: local
