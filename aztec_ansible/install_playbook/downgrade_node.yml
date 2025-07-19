@@ -1,0 +1,19 @@
+# @format
+---
+- name: Downgrade Aztec nodes to version 0.87.9
+  hosts: all
+  become: no
+  gather_facts: no
+
+  tasks:
+    - name: Downgrade Aztec node to version 0.87.9
+      shell: |
+        aztec-up 0.87.9 && \
+        sed -i 's/latest/0.87.9/' "$HOME/.aztec/bin/.aztec-run" && \
+        aztec -V && \
+        sudo systemctl restart aztec-node.service
+      register: downgrade_result
+
+    - name: Display downgrade result
+      debug:
+        var: downgrade_result.stdout_lines
