@@ -2,17 +2,31 @@
 ---
 - name: Downgrade Aztec nodes to version 0.87.9
   hosts: all
-  become: no
-  gather_facts: no
+  gather_facts: yes
+  become: yes
+  become_method: sudo
+  become_user: root
 
   tasks:
     - name: Downgrade Aztec node to version 0.87.9
       shell: |
-        aztec-up 0.87.9 && \
+        echo "=== Starting Aztec Downgrade Process ==="
+        echo "Server: {{ inventory_hostname }}"
+        echo "Date: $(date)"
+        echo "Current user: $(whoami)"
+        echo "Downgrading to version 0.87.9..."
+
+        bash -l -c "aztec-up 0.87.9" && \
         sed -i 's/latest/0.87.9/' "$HOME/.aztec/bin/.aztec-run" && \
-        aztec -V && \
-        sudo systemctl restart aztec-node.service
+        bash -l -c "aztec -V" && \
+        systemctl restart aztec-node.service
+
+        echo "Downgrade process completed"
+      args:
+        executable: /bin/bash
       register: downgrade_result
+      async: 1800 # 30 minutes timeout
+      poll: 15
 
     - name: Display downgrade result
       debug:
