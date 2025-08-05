@@ -1,0 +1,30 @@
+# @format
+---
+- name: Upgrade Aztec nodes to latest version
+  hosts: all
+  gather_facts: yes
+  become: yes
+  become_method: sudo
+  become_user: root
+
+  tasks:
+    - name: Update .aztec-run file to use latest version
+      shell: |
+        echo "=== Starting Aztec Version Update Process ==="
+        echo "Server: {{ inventory_hostname }}"
+        echo "Date: $(date)"
+        echo "Current user: $(whoami)"
+        echo "Updating .aztec-run file to use latest version..."
+
+        sed -i 's/0.87.9/latest/' "$HOME/.aztec/bin/.aztec-run"
+
+        echo "Version update completed"
+        echo "Current .aztec-run content:"
+        cat "$HOME/.aztec/bin/.aztec-run" | grep -E "(latest|[0-9]+\.[0-9]+\.[0-9]+)" || echo "No version found in .aztec-run"
+      args:
+        executable: /bin/bash
+      register: update_result
+
+    - name: Display update result
+      debug:
+        var: update_result.stdout_lines
