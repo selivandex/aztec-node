@@ -1,0 +1,41 @@
+# @format
+---
+- name: Fix validator private key parameter in start_aztec_node.sh
+  hosts: all
+  gather_facts: yes
+  become: yes
+  become_method: sudo
+  become_user: root
+
+  tasks:
+    - name: Update validatorPrivateKey to validatorPrivateKeys in start_aztec_node.sh
+      shell: |
+        echo "=== Starting Validator Key Parameter Fix ==="
+        echo "Server: {{ inventory_hostname }}"
+        echo "Date: $(date)"
+        echo "Current user: $(whoami)"
+        echo "Fixing validator key parameter in start_aztec_node.sh..."
+
+        # Check if file exists
+        if [ ! -f "$HOME/start_aztec_node.sh" ]; then
+          echo "ERROR: File $HOME/start_aztec_node.sh not found!"
+          exit 1
+        fi
+
+        # Show current content with validator key parameter
+        echo "Current validator key parameter in file:"
+        grep -n "validatorPrivateKey" "$HOME/start_aztec_node.sh" || echo "No validatorPrivateKey found in file"
+
+        # Apply the fix
+        sed -i 's/validatorPrivateKey/validatorPrivateKeys/' "$HOME/start_aztec_node.sh"
+
+        echo "Fix applied successfully"
+        echo "Updated validator key parameter in file:"
+        grep -n "validatorPrivateKeys" "$HOME/start_aztec_node.sh" || echo "No validatorPrivateKeys found in file"
+      args:
+        executable: /bin/bash
+      register: fix_result
+
+    - name: Display fix result
+      debug:
+        var: fix_result.stdout_lines
