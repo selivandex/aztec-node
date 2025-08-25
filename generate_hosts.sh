@@ -138,13 +138,13 @@ def parse_csv_row(row: Dict[str, str], row_num: int) -> Optional[Dict[str, str]]
         'private_key': private_key
     }
 
-def create_hosts_file(servers: List[Dict[str, str]], hosts_path: str, server_prefix: str) -> None:
+def create_hosts_file(servers: List[Dict[str, str]], hosts_path: str, server_prefix: str, start_index: int) -> None:
     """Create Ansible hosts file."""
     try:
         with open(hosts_path, 'w') as hosts_file:
             hosts_file.write("[aztec_nodes]\n")
             
-            for i, server in enumerate(servers, 1):
+            for i, server in enumerate(servers, start_index):
                 # Encode hex values to base64 to avoid Ansible auto-conversion
                 eth_address_b64 = base64.b64encode(server['address'].encode()).decode()
                 private_key_b64 = base64.b64encode(server['private_key'].encode()).decode()
@@ -165,13 +165,20 @@ def create_hosts_file(servers: List[Dict[str, str]], hosts_path: str, server_pre
 
 def main() -> int:
     """Main function."""
-    if len(sys.argv) < 3 or len(sys.argv) > 4:
-        error("Usage: python3 converter.py <csv_file> <hosts_file> [server_prefix]")
+    if len(sys.argv) < 3 or len(sys.argv) > 5:
+        error("Usage: python3 converter.py <csv_file> <hosts_file> [server_prefix] [start_index]")
         return 1
     
     csv_file = sys.argv[1]
     hosts_file = sys.argv[2]
-    server_prefix = sys.argv[3] if len(sys.argv) == 4 else "node"
+    server_prefix = sys.argv[3] if len(sys.argv) >= 4 else "node"
+    start_index_str = sys.argv[4] if len(sys.argv) >= 5 else "1"
+    
+    # Validate and parse start index
+    if not start_index_str.isdigit() or start_index_str.startswith('0'):
+        error("Start index must be a positive integer")
+        return 1
+    start_index = int(start_index_str)
     
     if not os.path.exists(csv_file):
         error(f"CSV file does not exist: {csv_file}")
@@ -204,7 +211,7 @@ def main() -> int:
             return 1
         
         log(f"Found {len(servers)} valid servers")
-        create_hosts_file(servers, hosts_file, server_prefix)
+        create_hosts_file(servers, hosts_file, server_prefix, start_index)
         
         success(f"Hosts file created: {hosts_file}")
         return 0
@@ -225,16 +232,24 @@ main() {
     log "=== Generate Hosts Script ==="
     
     # Check arguments
-    if [ "$#" -lt 1 ] || [ "$#" -gt 2 ]; then
-        error "Usage: $0 <path_to_csv> [server_prefix]"
+    if [ "$#" -lt 1 ] || [ "$#" -gt 3 ]; then
+        error "Usage: $0 <path_to_csv> [server_prefix] [start_index]"
         error "Example: $0 wallets_alex.csv"
         error "Example: $0 wallets_alex.csv validator"
-        error "Example: $0 servers_stepa.csv aztec"
+        error "Example: $0 wallets_alex.csv validator 5"
+        error "Example: $0 servers_stepa.csv aztec 10"
         exit 1
     fi
     
     local CSV_FILE="$1"
     local SERVER_PREFIX="${2:-node}"
+    local START_INDEX="${3:-1}"
+    
+    # Validate start index (must be positive integer)
+    if ! [[ "$START_INDEX" =~ ^[1-9][0-9]*$ ]]; then
+        error "Start index must be a positive integer"
+        exit 1
+    fi
     
     # Convert to absolute path if relative
     if [[ "$CSV_FILE" != /* ]]; then
@@ -267,6 +282,7 @@ main() {
     log "CSV file: $CSV_FILE"
     log "Hosts file will be: $HOSTS_FILE"
     log "Server prefix: $SERVER_PREFIX"
+    log "Start index: $START_INDEX"
     
     # Create temporary converter script
     local TEMP_CONVERTER=$(mktemp)
@@ -274,7 +290,7 @@ main() {
     
     # Generate hosts file
     log "Generating hosts file..."
-    if python3 "$TEMP_CONVERTER" "$CSV_FILE" "$HOSTS_FILE" "$SERVER_PREFIX"; then
+    if python3 "$TEMP_CONVERTER" "$CSV_FILE" "$HOSTS_FILE" "$SERVER_PREFIX" "$START_INDEX"; then
         success "=== Hosts file generated successfully! ==="
         log "Generated: $HOSTS_FILE"
         
