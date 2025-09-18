@@ -1,0 +1,113 @@
+# @format
+---
+- name: Fix testnet parameter and update Aztec
+  hosts: all
+  gather_facts: yes
+  become: yes
+  become_method: sudo
+  become_user: root
+  serial: 1 # Process one server at a time
+  vars_files:
+    - ../common/vars/server_vars.yml
+
+  tasks:
+    - name: Step 1 - Fix testnet parameter in start_aztec_node.sh
+      shell: |
+        echo "=== Step 1: Starting Testnet Parameter Fix ==="
+        echo "Server: {{ inventory_hostname }}"
+        echo "Date: $(date)"
+        echo "Current user: $(whoami)"
+        echo "Fixing testnet parameter in start_aztec_node.sh..."
+
+        # Check if file exists
+        if [ ! -f "$HOME/start_aztec_node.sh" ]; then
+          echo "ERROR: File $HOME/start_aztec_node.sh not found!"
+          exit 1
+        fi
+
+        # Show current content with testnet parameter
+        echo "Current testnet parameter in file:"
+        grep -n "alpha-testnet" "$HOME/start_aztec_node.sh" || echo "No alpha-testnet found in file"
+
+        # Apply the fix
+        sed -i 's/alpha-testnet/testnet/g' "$HOME/start_aztec_node.sh"
+
+        echo "Step 1 completed: Testnet parameter fix applied successfully"
+        echo "Updated testnet parameter in file:"
+        grep -n "testnet" "$HOME/start_aztec_node.sh" || echo "No testnet found in file"
+      args:
+        executable: /bin/bash
+      register: testnet_fix_result
+
+    - name: Display testnet fix result
+      debug:
+        msg: |
+          Testnet fix completed on {{ inventory_hostname }}
+          {{ testnet_fix_result.stdout }}
+
+    - name: Step 2 - Update Aztec to latest version
+      shell: |
+        echo "=== Step 2: Starting Aztec Update Process ==="
+        echo "Server: {{ inventory_hostname }}"
+        echo "Date: $(date)"
+        echo "Current user: $(whoami)"
+        echo "Running aztec-up latest with retry..."
+
+        # Retry mechanism for network issues
+        for attempt in 1 2 3; do
+          echo "Attempt $attempt of 3..."
+          if bash -l -c "aztec-up latest" 2>&1; then
+            echo "Update successful on attempt $attempt"
+            break
+          else
+            exit_code=$?
+            echo "Attempt $attempt failed with exit code: $exit_code"
+            if [ $attempt -eq 3 ]; then
+              echo "All attempts failed, giving up"
+              exit $exit_code
+            else
+              echo "Waiting 10 seconds before retry..."
+              sleep 10
+            fi
+          fi
+        done
+
+        echo "Restarting service..."
+        systemctl restart aztec-node.service
+
+        echo "Step 2 completed: Update process finished"
+      args:
+        executable: /bin/bash
+      register: aztec_update_result
+      async: 1800 # 30 minutes timeout
+      poll: 15
+      retries: 1
+      delay: 30
+
+    - name: Show aztec update output
+      debug:
+        msg: |
+          Aztec update completed on {{ inventory_hostname }}
+          {{ aztec_update_result.stdout }}
+
+    - name: Step 3 - Check service status after update
+      shell: systemctl status aztec-node.service --no-pager -l
+      register: service_status
+      ignore_errors: yes
+
+    - name: Display final results for server
+      debug:
+        msg: |
+          === Combined Operations Completed on {{ inventory_hostname }} ===
+          Step 1: Testnet parameter fix - COMPLETED
+          Step 2: Aztec update - COMPLETED
+          Service status: {{ service_status.stdout_lines[1] if service_status.stdout_lines|length > 1 else 'Unknown' }}
+
+          Moving to next server...
+
+  handlers:
+    - name: restart aztec service
+      systemd:
+        name: aztec-node.service
+        state: restarted
+        enabled: yes
