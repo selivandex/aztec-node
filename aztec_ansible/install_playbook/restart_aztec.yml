@@ -1,0 +1,40 @@
+# @format
+---
+- name: Restart Aztec Service
+  hosts: all
+  gather_facts: yes
+  become: yes
+  become_method: sudo
+  become_user: root
+  vars_files:
+    - ../common/vars/server_vars.yml
+
+  tasks:
+    - name: Restart aztec-node service
+      systemd:
+        name: aztec-node.service
+        state: restarted
+        enabled: yes
+      register: restart_result
+
+    - name: Wait for service to start
+      wait_for:
+        timeout: 30
+      delegate_to: localhost
+
+    - name: Check service status after restart
+      shell: systemctl status aztec-node.service --no-pager -l
+      register: service_status
+      ignore_errors: yes
+
+    - name: Display restart results
+      debug:
+        msg: |
+          Restart completed on {{ inventory_hostname }}
+          Service status: {{ service_status.stdout_lines[2] if service_status.stdout_lines|length > 2 else 'Unknown' }}
+          Active state: {{ 'Active' if 'active (running)' in service_status.stdout else 'Inactive/Failed' }}
+
+    - name: Verify service is running
+      shell: systemctl is-active aztec-node.service
+      register: is_active
+      failed_when: is_active.stdout != "active"
