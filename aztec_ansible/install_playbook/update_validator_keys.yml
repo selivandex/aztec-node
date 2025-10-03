@@ -10,66 +10,20 @@
     - ../common/vars/server_vars.yml
 
   tasks:
-    - name: Decode and update validator private keys in start_aztec_node.sh
-      shell: |
-        echo "=== Starting Validator Keys Update ==="
-        echo "Server: {{ inventory_hostname }}"
-        echo "Date: $(date)"
-        echo "Current user: $(whoami)"
-        echo "Updating validator keys in start_aztec_node.sh..."
+    - name: Upload update script to server
+      template:
+        src: templates/update_keys.sh.j2
+        dest: /tmp/update_validator_keys.sh
+        mode: "0755"
 
-        # Check if file exists
-        if [ ! -f "$HOME/start_aztec_node.sh" ]; then
-          echo "ERROR: File $HOME/start_aztec_node.sh not found!"
-          exit 1
-        fi
-
-        echo "Decoding validator private keys from base64..."
-
-        # Decode keys from environment variable
-        IFS=',' read -ra KEYS_B64 <<< "$VALIDATOR_KEYS_B64"
-        DECODED_KEYS=()
-
-        for key_b64 in "${KEYS_B64[@]}"; do
-          decoded_key=$(echo "$key_b64" | base64 -d)
-          DECODED_KEYS+=("$decoded_key")
-        done
-
-        # Join decoded keys with comma
-        VALIDATOR_KEYS=$(IFS=','; echo "${DECODED_KEYS[*]}")
-
-        echo "Number of keys: ${#DECODED_KEYS[@]}"
-        echo "First key: ${DECODED_KEYS[0]}"
-
-        # Show current validator keys line
-        echo ""
-        echo "Current validator keys configuration:"
-        grep -n "sequencer.validatorPrivateKeys" "$HOME/start_aztec_node.sh" || echo "No validatorPrivateKeys found in file"
-
-        # Create backup
-        cp "$HOME/start_aztec_node.sh" "$HOME/start_aztec_node.sh.backup.$(date +%Y%m%d_%H%M%S)"
-        echo "Backup created"
-
-        # Replace the validator keys line using sed
-        # Escape special characters for sed
-        ESCAPED_KEYS=$(echo "$VALIDATOR_KEYS" | sed 's/[&/\]/\\&/g')
-
-        # Try to replace with quotes
-        sed -i "s|--sequencer.validatorPrivateKeys=\"[^\"]*\"|--sequencer.validatorPrivateKeys=\"$ESCAPED_KEYS\"|g" "$HOME/start_aztec_node.sh"
-
-        # Also try without quotes in case format is different
-        sed -i "s|--sequencer.validatorPrivateKeys=[^ \\]*|--sequencer.validatorPrivateKeys=\"$ESCAPED_KEYS\"|g" "$HOME/start_aztec_node.sh"
-
-        echo ""
-        echo "Updated validator keys configuration:"
-        grep -n "sequencer.validatorPrivateKeys" "$HOME/start_aztec_node.sh" || echo "No validatorPrivateKeys found in file"
-
-        echo "Validator keys update completed successfully"
-      args:
-        executable: /bin/bash
-      environment:
-        VALIDATOR_KEYS_B64: "{{ validator_private_key_b64 }}"
+    - name: Execute update script
+      command: /tmp/update_validator_keys.sh
       register: update_result
+
+    - name: Remove temporary script
+      file:
+        path: /tmp/update_validator_keys.sh
+        state: absent
 
     - name: Display update result
       debug:
