@@ -10,8 +10,13 @@
     - ../common/vars/server_vars.yml
 
   tasks:
+    - name: Set validator keys variable
+      set_fact:
+        validator_keys_raw: "{{ validator_private_key_b64 }}"
+
     - name: Decode and update validator private keys in start_aztec_node.sh
       shell: |
+        set -e
         echo "=== Starting Validator Keys Update ==="
         echo "Server: {{ inventory_hostname }}"
         echo "Date: $(date)"
@@ -26,7 +31,7 @@
         echo "Decoding validator private keys from base64..."
 
         # Split base64 keys by comma and decode each one
-        IFS=',' read -ra KEYS_B64 <<< "{{ validator_private_key_b64 }}"
+        IFS=',' read -ra KEYS_B64 <<< '{{ validator_keys_raw }}'
         DECODED_KEYS=()
 
         for key_b64 in "${KEYS_B64[@]}"; do
