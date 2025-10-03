@@ -7,6 +7,7 @@ echo "Date: $(date)"
 echo "Current user: $(whoami)"
 echo "Updating validator keys in start_aztec_node.sh..."
 
+{% raw %}
 # Check if file exists
 if [ ! -f "$HOME/start_aztec_node.sh" ]; then
   echo "ERROR: File $HOME/start_aztec_node.sh not found!"
@@ -16,7 +17,9 @@ fi
 echo "Decoding validator private keys from base64..."
 
 # Decode keys from comma-separated base64 string
+{% endraw %}
 IFS=',' read -ra KEYS_B64 <<< "{{ validator_private_key_b64 }}"
+{% raw %}
 DECODED_KEYS=()
 
 for key_b64 in "${KEYS_B64[@]}"; do
@@ -54,4 +57,5 @@ echo "Updated validator keys configuration:"
 grep -n "sequencer.validatorPrivateKeys" "$HOME/start_aztec_node.sh" || echo "No validatorPrivateKeys found in file"
 
 echo "Validator keys update completed successfully"
+{% endraw %}
 
