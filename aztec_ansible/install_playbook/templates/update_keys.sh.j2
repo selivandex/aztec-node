@@ -43,14 +43,11 @@ cp "$HOME/start_aztec_node.sh" "$HOME/start_aztec_node.sh.backup.$(date +%Y%m%d_
 echo "Backup created"
 
 # Replace the validator keys line using sed
-# Escape special characters for sed
-ESCAPED_KEYS=$(echo "$VALIDATOR_KEYS" | sed 's/[&/\]/\\&/g')
+# Escape special characters for sed (but keep comma for multiple keys)
+ESCAPED_KEYS=$(echo "$VALIDATOR_KEYS" | sed 's/[\/&]/\\&/g')
 
-# Try to replace with quotes
-sed -i "s|--sequencer.validatorPrivateKeys=\"[^\"]*\"|--sequencer.validatorPrivateKeys=\"$ESCAPED_KEYS\"|g" "$HOME/start_aztec_node.sh"
-
-# Also try without quotes in case format is different
-sed -i "s|--sequencer.validatorPrivateKeys=[^ \\]*|--sequencer.validatorPrivateKeys=\"$ESCAPED_KEYS\"|g" "$HOME/start_aztec_node.sh"
+# Replace entire line containing validatorPrivateKeys
+sed -i "/--sequencer.validatorPrivateKeys/c\  --sequencer.validatorPrivateKeys=\"$ESCAPED_KEYS\" \\\\" "$HOME/start_aztec_node.sh"
 
 echo ""
 echo "Updated validator keys configuration:"
