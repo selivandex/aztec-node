@@ -1,0 +1,101 @@
+# @format
+---
+- name: Update RPC URLs in start_aztec_node.sh
+  hosts: all
+  gather_facts: yes
+  become: yes
+  become_method: sudo
+  become_user: root
+
+  tasks:
+    - name: Update L1 RPC URLs in start_aztec_node.sh
+      shell: |
+        echo "=== Starting RPC URLs Update ==="
+        echo "Server: {{ inventory_hostname }}"
+        echo "Date: $(date)"
+        echo "Current user: $(whoami)"
+        echo "Updating RPC URLs in start_aztec_node.sh..."
+
+        # Check if file exists
+        if [ ! -f "$HOME/start_aztec_node.sh" ]; then
+          echo "ERROR: File $HOME/start_aztec_node.sh not found!"
+          exit 1
+        fi
+
+        # Create backup
+        cp "$HOME/start_aztec_node.sh" "$HOME/start_aztec_node.sh.backup.$(date +%Y%m%d_%H%M%S)"
+        echo "Backup created"
+
+        # Show current RPC URLs
+        echo ""
+        echo "Current L1 RPC URL:"
+        grep -n "l1-rpc-urls" "$HOME/start_aztec_node.sh" || echo "No l1-rpc-urls found"
+        echo ""
+        echo "Current L1 Consensus URL:"
+        grep -n "l1-consensus-host-urls" "$HOME/start_aztec_node.sh" || echo "No l1-consensus-host-urls found"
+
+        # Apply the fixes
+        echo ""
+        echo "Applying changes..."
+
+        # Replace L1 RPC URL
+        sed -i 's|--l1-rpc-urls "http://65.109.116.87:8545"|--l1-rpc-urls "http://213.232.207.218:8546"|g' "$HOME/start_aztec_node.sh"
+
+        # Replace L1 Consensus URL
+        sed -i 's|--l1-consensus-host-urls "http://65.109.116.87:5052"|--l1-consensus-host-urls "http://213.232.207.218:5053"|g' "$HOME/start_aztec_node.sh"
+
+        echo "Changes applied successfully"
+        echo ""
+        echo "Updated L1 RPC URL:"
+        grep -n "l1-rpc-urls" "$HOME/start_aztec_node.sh" || echo "No l1-rpc-urls found"
+        echo ""
+        echo "Updated L1 Consensus URL:"
+        grep -n "l1-consensus-host-urls" "$HOME/start_aztec_node.sh" || echo "No l1-consensus-host-urls found"
+
+        echo ""
+        echo "=== RPC URLs Update Completed ==="
+      args:
+        executable: /bin/bash
+      register: fix_result
+
+    - name: Display update result
+      debug:
+        var: fix_result.stdout_lines
+
+    - name: Restart aztec-node service
+      systemd:
+        name: aztec-node.service
+        state: restarted
+        enabled: yes
+      register: restart_result
+
+    - name: Wait for service to start
+      wait_for:
+        timeout: 30
+      delegate_to: localhost
+
+    - name: Check service status after restart
+      shell: systemctl status aztec-node.service --no-pager -l
+      register: service_status
+      ignore_errors: yes
+
+    - name: Display restart results
+      debug:
+        msg: |
+          Restart completed on {{ inventory_hostname }}
+          Service status: {{ service_status.stdout_lines[2] if service_status.stdout_lines|length > 2 else 'Unknown' }}
+          Active state: {{ 'Active' if 'active (running)' in service_status.stdout else 'Inactive/Failed' }}
+
+    - name: Verify service is running
+      shell: systemctl is-active aztec-node.service
+      register: is_active
+      failed_when: is_active.stdout != "active"
+
+    - name: Final success message
+      debug:
+        msg: |
+          ===========================================
+          RPC URLs updated successfully!
+          Aztec node restarted and is running.
+          Server: {{ inventory_hostname }}
+          ===========================================
