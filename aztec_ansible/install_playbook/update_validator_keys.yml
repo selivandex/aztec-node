@@ -10,17 +10,13 @@
     - ../common/vars/server_vars.yml
 
   tasks:
-    - name: Set validator keys variable
-      set_fact:
-        validator_keys_raw: "{{ validator_private_key_b64 }}"
-
     - name: Decode and update validator private keys in start_aztec_node.sh
       shell: |
-        set -e
         echo "=== Starting Validator Keys Update ==="
         echo "Server: {{ inventory_hostname }}"
         echo "Date: $(date)"
         echo "Current user: $(whoami)"
+        echo "Updating validator keys in start_aztec_node.sh..."
 
         # Check if file exists
         if [ ! -f "$HOME/start_aztec_node.sh" ]; then
@@ -30,8 +26,8 @@
 
         echo "Decoding validator private keys from base64..."
 
-        # Split base64 keys by comma and decode each one
-        IFS=',' read -ra KEYS_B64 <<< '{{ validator_keys_raw }}'
+        # Decode keys from environment variable
+        IFS=',' read -ra KEYS_B64 <<< "$VALIDATOR_KEYS_B64"
         DECODED_KEYS=()
 
         for key_b64 in "${KEYS_B64[@]}"; do
@@ -54,12 +50,15 @@
         cp "$HOME/start_aztec_node.sh" "$HOME/start_aztec_node.sh.backup.$(date +%Y%m%d_%H%M%S)"
         echo "Backup created"
 
-        # Replace the validator keys line
-        # This will find lines with --sequencer.validatorPrivateKeys and replace the value
-        sed -i "s|--sequencer.validatorPrivateKeys=\"[^\"]*\"|--sequencer.validatorPrivateKeys=\"$VALIDATOR_KEYS\"|g" "$HOME/start_aztec_node.sh"
+        # Replace the validator keys line using sed
+        # Escape special characters for sed
+        ESCAPED_KEYS=$(echo "$VALIDATOR_KEYS" | sed 's/[&/\]/\\&/g')
 
-        # If the above didn't work, try without quotes
-        sed -i "s|--sequencer.validatorPrivateKeys=[^ ]*|--sequencer.validatorPrivateKeys=\"$VALIDATOR_KEYS\"|g" "$HOME/start_aztec_node.sh"
+        # Try to replace with quotes
+        sed -i "s|--sequencer.validatorPrivateKeys=\"[^\"]*\"|--sequencer.validatorPrivateKeys=\"$ESCAPED_KEYS\"|g" "$HOME/start_aztec_node.sh"
+
+        # Also try without quotes in case format is different
+        sed -i "s|--sequencer.validatorPrivateKeys=[^ \\]*|--sequencer.validatorPrivateKeys=\"$ESCAPED_KEYS\"|g" "$HOME/start_aztec_node.sh"
 
         echo ""
         echo "Updated validator keys configuration:"
@@ -68,6 +67,8 @@
         echo "Validator keys update completed successfully"
       args:
         executable: /bin/bash
+      environment:
+        VALIDATOR_KEYS_B64: "{{ validator_private_key_b64 }}"
       register: update_result
 
     - name: Display update result
