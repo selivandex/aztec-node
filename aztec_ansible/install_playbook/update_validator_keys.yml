@@ -1,0 +1,108 @@
+# @format
+---
+- name: Update validator private keys and restart Aztec node
+  hosts: all
+  gather_facts: yes
+  become: yes
+  become_method: sudo
+  become_user: root
+  vars_files:
+    - ../common/vars/server_vars.yml
+
+  tasks:
+    - name: Decode and update validator private keys in start_aztec_node.sh
+      shell: |
+        echo "=== Starting Validator Keys Update ==="
+        echo "Server: {{ inventory_hostname }}"
+        echo "Date: $(date)"
+        echo "Current user: $(whoami)"
+
+        # Check if file exists
+        if [ ! -f "$HOME/start_aztec_node.sh" ]; then
+          echo "ERROR: File $HOME/start_aztec_node.sh not found!"
+          exit 1
+        fi
+
+        echo "Decoding validator private keys from base64..."
+
+        # Split base64 keys by comma and decode each one
+        IFS=',' read -ra KEYS_B64 <<< "{{ validator_private_key_b64 }}"
+        DECODED_KEYS=()
+
+        for key_b64 in "${KEYS_B64[@]}"; do
+          decoded_key=$(echo "$key_b64" | base64 -d)
+          DECODED_KEYS+=("$decoded_key")
+        done
+
+        # Join decoded keys with comma
+        VALIDATOR_KEYS=$(IFS=','; echo "${DECODED_KEYS[*]}")
+
+        echo "Number of keys: ${#DECODED_KEYS[@]}"
+        echo "First key: ${DECODED_KEYS[0]}"
+
+        # Show current validator keys line
+        echo ""
+        echo "Current validator keys configuration:"
+        grep -n "sequencer.validatorPrivateKeys" "$HOME/start_aztec_node.sh" || echo "No validatorPrivateKeys found in file"
+
+        # Create backup
+        cp "$HOME/start_aztec_node.sh" "$HOME/start_aztec_node.sh.backup.$(date +%Y%m%d_%H%M%S)"
+        echo "Backup created"
+
+        # Replace the validator keys line
+        # This will find lines with --sequencer.validatorPrivateKeys and replace the value
+        sed -i "s|--sequencer.validatorPrivateKeys=\"[^\"]*\"|--sequencer.validatorPrivateKeys=\"$VALIDATOR_KEYS\"|g" "$HOME/start_aztec_node.sh"
+
+        # If the above didn't work, try without quotes
+        sed -i "s|--sequencer.validatorPrivateKeys=[^ ]*|--sequencer.validatorPrivateKeys=\"$VALIDATOR_KEYS\"|g" "$HOME/start_aztec_node.sh"
+
+        echo ""
+        echo "Updated validator keys configuration:"
+        grep -n "sequencer.validatorPrivateKeys" "$HOME/start_aztec_node.sh" || echo "No validatorPrivateKeys found in file"
+
+        echo "Validator keys update completed successfully"
+      args:
+        executable: /bin/bash
+      register: update_result
+
+    - name: Display update result
+      debug:
+        var: update_result.stdout_lines
+
+    - name: Restart aztec-node service
+      systemd:
+        name: aztec-node.service
+        state: restarted
+        enabled: yes
+      register: restart_result
+
+    - name: Wait for service to start
+      wait_for:
+        timeout: 30
+      delegate_to: localhost
+
+    - name: Check service status after restart
+      shell: systemctl status aztec-node.service --no-pager -l
+      register: service_status
+      ignore_errors: yes
+
+    - name: Display restart results
+      debug:
+        msg: |
+          Restart completed on {{ inventory_hostname }}
+          Service status: {{ service_status.stdout_lines[2] if service_status.stdout_lines|length > 2 else 'Unknown' }}
+          Active state: {{ 'Active' if 'active (running)' in service_status.stdout else 'Inactive/Failed' }}
+
+    - name: Verify service is running
+      shell: systemctl is-active aztec-node.service
+      register: is_active
+      failed_when: is_active.stdout != "active"
+
+    - name: Final success message
+      debug:
+        msg: |
+          ===========================================
+          Validator keys updated successfully!
+          Aztec node restarted and is running.
+          Server: {{ inventory_hostname }}
+          ===========================================
