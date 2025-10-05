@@ -39,10 +39,10 @@
         echo "Applying changes..."
 
         # Replace L1 RPC URL
-        sed -i 's|--l1-rpc-urls "http://65.109.116.87:8545"|--l1-rpc-urls "http://213.232.207.218:8546"|g' "$HOME/start_aztec_node.sh"
+        sed -i 's|--l1-rpc-urls "http://213.232.207.218:8546"|--l1-rpc-urls "http://46.62.216.47:8545"|g' "$HOME/start_aztec_node.sh"
 
         # Replace L1 Consensus URL
-        sed -i 's|--l1-consensus-host-urls "http://65.109.116.87:5052"|--l1-consensus-host-urls "http://213.232.207.218:5053"|g' "$HOME/start_aztec_node.sh"
+        sed -i 's|--l1-consensus-host-urls "http://213.232.207.218:5053"|--l1-consensus-host-urls "http://46.62.216.47:3500"|g' "$HOME/start_aztec_node.sh"
 
         echo "Changes applied successfully"
         echo ""

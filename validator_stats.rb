@@ -9,7 +9,7 @@ require 'uri'
 # Fetches validator data from dashtec.xyz API and saves to CSV
 class ValidatorStatsCollector
   API_BASE_URL = 'https://dashtec.xyz/api/search'
-  INPUT_FILE = 'validators.csv'
+  INPUT_FILE = 'stepa_validator.csv'
   OUTPUT_FILE = 'validator_statistics.csv'
   
   def initialize
