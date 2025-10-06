@@ -39,7 +39,7 @@ if [ "$#" -ge 1 ]; then
 fi
 
 INVENTORY_PATH="${COMMON_DIR}/inventory/${INVENTORY_NAME}"
-LOG_FILE="${LOGS_DIR}/fix_rpc_urls_${INVENTORY_NAME}_$(date +%Y%m%d_%H%M%S).log"
+LOG_FILE="${LOGS_DIR}/remove_testnet_data_${INVENTORY_NAME}_$(date +%Y%m%d_%H%M%S).log"
 
 # Create logs directory
 mkdir -p "$LOGS_DIR"
@@ -48,7 +48,7 @@ mkdir -p "$LOGS_DIR"
 exec > >(tee -a "$LOG_FILE")
 exec 2>&1
 
-log "Starting RPC URLs update in start_aztec_node.sh"
+log "Starting testnet data removal process"
 log "Using inventory: $INVENTORY_NAME"
 log "Log file: $LOG_FILE"
 
@@ -126,11 +126,13 @@ check_inventory() {
 show_usage() {
     echo "Usage: $0 [inventory_name]"
     echo ""
-    echo "This script updates RPC URLs in start_aztec_node.sh file and restarts the service."
-    echo "Changes:"
-    echo "  --l1-rpc-urls from http://213.232.207.218:8546 to http://46.62.216.47:8545"
-    echo "  --l1-consensus-host-urls from http://213.232.207.218:5053 to http://46.62.216.47:3500"
-    echo "  Restarts aztec-node.service after applying changes"
+    echo "This script removes .aztec/testnet/data folder and restarts the service."
+    echo "Actions:"
+    echo "  1. Stops aztec-node.service"
+    echo "  2. Removes ~/.aztec/testnet/data directory"
+    echo "  3. Restarts aztec-node.service"
+    echo ""
+    echo "WARNING: This will delete all testnet data!"
     echo "Make sure to generate the inventory file first using generate_hosts.sh"
     echo ""
     echo "Examples:"
@@ -145,11 +147,11 @@ show_usage() {
     echo "  cd ../../ && ./generate_hosts.sh wallets_alex.csv"
 }
 
-# Run fix
-run_fix() {
-    log "=== Starting RPC URLs update ==="
-    log "Updating start_aztec_node.sh files on all servers..."
-    log "Note: Aztec node service will be restarted after update..."
+# Run removal
+run_removal() {
+    log "=== Starting testnet data removal ==="
+    log "WARNING: This will delete .aztec/testnet/data on all servers!"
+    log "Service will be stopped, data removed, and service restarted..."
     
     # Set SSH key path
     export ANSIBLE_PRIVATE_KEY_FILE="${COMMON_DIR}/ssh/id_rsa"
@@ -157,7 +159,7 @@ run_fix() {
     export ANSIBLE_HOST_KEY_CHECKING=False
     export ANSIBLE_SSH_ARGS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o BatchMode=yes -o ConnectTimeout=10"
 
-    local ansible_cmd="ansible-playbook fix_rpc_urls.yml -i $INVENTORY_PATH"
+    local ansible_cmd="ansible-playbook remove_testnet_data.yml -i $INVENTORY_PATH"
     
     # Add verbose flag if VERBOSE env var is set
     if [ "${VERBOSE:-}" = "1" ]; then
@@ -167,9 +169,9 @@ run_fix() {
     log "Running: $ansible_cmd"
     
     if eval "$ansible_cmd"; then
-        success "=== RPC URLs update completed successfully! ==="
+        success "=== Testnet data removal completed successfully! ==="
     else
-        error "=== RPC URLs update failed! ==="
+        error "=== Testnet data removal failed! ==="
         error "Check the log file for details: $LOG_FILE"
         exit 1
     fi
@@ -177,7 +179,7 @@ run_fix() {
 
 # Main function
 main() {
-    log "=== RPC URLs Update Script ==="
+    log "=== Testnet Data Removal Script ==="
     
     # Show help if requested
     if [ "$#" -ge 1 ] && [[ "$1" =~ ^(-h|--help|help)$ ]]; then
@@ -190,15 +192,14 @@ main() {
     check_ssh_key
     check_inventory
     
-    # Run fix
-    run_fix
+    # Run removal
+    run_removal
     
     # Final success message
     echo ""
     success "=== All tasks completed successfully! ==="
-    log "RPC URLs have been updated in start_aztec_node.sh on all servers"
-    log "Updated L1 RPC URL: http://213.232.207.218:8546 -> http://46.62.216.47:8545"
-    log "Updated L1 Consensus URL: http://213.232.207.218:5053 -> http://46.62.216.47:3500"
+    log "Testnet data has been removed from all servers"
+    log "Directory removed: ~/.aztec/testnet/data"
     log "Aztec node service has been restarted on all servers"
     log "Full log available at: $LOG_FILE"
 }
@@ -214,4 +215,3 @@ trap cleanup EXIT
 
 # Run main function
 main "$@"
-
