@@ -1,0 +1,77 @@
+# @format
+---
+- name: Check sync status on all servers
+  hosts: all
+  gather_facts: yes
+  become: yes
+  become_method: sudo
+  become_user: root
+
+  tasks:
+    - name: Run sync check script
+      shell: |
+        echo "=== Starting Sync Status Check ==="
+        echo "Server: {{ inventory_hostname }}"
+        echo "Date: $(date)"
+        echo "Current user: $(whoami)"
+        echo ""
+
+        # Download and run sync check script with timeout
+        # Run it once and capture output, then kill after first check
+        timeout 30 bash <(curl -s https://raw.githubusercontent.com/cerberus-node/aztec-network/refs/heads/main/sync-check.sh) 2>&1 | head -20 || true
+
+        echo ""
+        echo "=== Sync Check Completed for {{ inventory_hostname }} ==="
+      args:
+        executable: /bin/bash
+      register: sync_result
+      ignore_errors: yes
+
+    - name: Parse sync status
+      shell: |
+        echo "{{ sync_result.stdout }}" | grep -E "(Local block|Remote block|Progress|synced)" || echo "Unable to parse sync status"
+      args:
+        executable: /bin/bash
+      register: parsed_result
+      ignore_errors: yes
+
+    - name: Display sync status
+      debug:
+        msg: |
+          ==========================================
+          Server: {{ inventory_hostname }}
+          ==========================================
+          {{ sync_result.stdout }}
+          ==========================================
+
+    - name: Check if fully synced
+      set_fact:
+        is_synced: "{{ 'fully synced' in sync_result.stdout or '100.00%' in sync_result.stdout or '100%' in sync_result.stdout }}"
+
+    - name: Display sync summary
+      debug:
+        msg: |
+          {% if is_synced %}
+          ✅ {{ inventory_hostname }}: FULLY SYNCED
+          {% else %}
+          ⚠️  {{ inventory_hostname }}: NOT SYNCED or SYNCING
+          {% endif %}
+
+    - name: Warn if not synced
+      debug:
+        msg: "WARNING: Server {{ inventory_hostname }} is not fully synced!"
+      when: not is_synced
+
+- name: Generate final summary
+  hosts: localhost
+  gather_facts: no
+  tasks:
+    - name: Final summary
+      debug:
+        msg: |
+          ===========================================
+          SYNC STATUS CHECK COMPLETED
+          ===========================================
+          Check the output above for each server's sync status.
+          Look for "✅ FULLY SYNCED" or "⚠️ NOT SYNCED" messages.
+          ===========================================
